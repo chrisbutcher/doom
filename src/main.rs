@@ -6,21 +6,20 @@ extern crate image;
 extern crate regex;
 
 use std::fs::File;
-// use std::io;
 use std::io::prelude::*;
 use std::io::Cursor;
 
 use regex::Regex;
 
-// use ascii::AsAsciiStr;
-
 fn main() {
-  let lumps = load_wad("doomu.wad");
-  let maps = load_maps(lumps);
+  let mut f = File::open("doomu.wad").unwrap();
+  let mut wad_file = Vec::new();
+  f.read_to_end(&mut wad_file).unwrap();
 
-  println!("{:?}", maps);
+  let lumps = load_lumps(&wad_file);
+  let maps = load_maps(&wad_file, lumps);
 
-  // render_scene()
+  println!("{:?}", maps[0]);
 }
 
 #[derive(Debug, Clone)]
@@ -35,13 +34,10 @@ struct Map {
   vertexes: Vec<MapVertex>,
 }
 
-fn load_maps(lumps: Vec<Lump>) -> Vec<Map> {
+fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
   let map_name_pattern = Regex::new("E[0-9]+M[0-9]+").unwrap();
 
   let mut maps = Vec::new();
-  // let mut lump_index = 0;
-
-  // let mut current_map: Option<Map> = None;
   let mut current_map_name: Option<String> = None;
   let mut current_map_vertexes = Vec::new();
 
@@ -58,8 +54,24 @@ fn load_maps(lumps: Vec<Lump>) -> Vec<Map> {
     }
 
     if lump.name == "VERTEXES" {
+      let mut vertex_i = lump.filepos;
+      let vertex_count = lump.size / 4; // each vertex is 4 bytes, 2x 16-bit (or 2 byte) signed integers
+
+      current_map_vertexes = vec![];
+
+      for _ in 0..vertex_count {
+        let x = i16::from_le_bytes([wad_file[vertex_i], wad_file[vertex_i + 1]]);
+        let y = i16::from_le_bytes([wad_file[vertex_i + 2], wad_file[vertex_i + 3]]);
+
+        current_map_vertexes.push(MapVertex{
+          x: x,
+          y: y,
+        });
+
+        vertex_i += 4;
+      }
+
       println!("Found vertexes!");
-      current_map_vertexes = vec![MapVertex { x: 0, y: 0 }]
     }
   }
 
@@ -73,11 +85,7 @@ struct Lump {
   name: String,
 }
 
-fn load_wad(filename: &str) -> Vec<Lump> {
-  let mut f = File::open(filename).unwrap();
-  let mut wad_file = Vec::new();
-  f.read_to_end(&mut wad_file).unwrap();
-
+fn load_lumps(wad_file: &Vec<u8>) -> Vec<Lump> {
   println!("Read WAD. File size in bytes: {}", wad_file.len());
 
   let wad_type: String = format!(
