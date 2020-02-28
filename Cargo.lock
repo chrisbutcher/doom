@@ -293,6 +293,7 @@ dependencies = [
  "glium",
  "image",
  "regex",
+ "svg",
 ]
 
 [[package]]
@@ -1037,6 +1038,12 @@ checksum = "f77b6b07e862c66a9f3e62a07588fee67cd90a9135a2b942409f195507b4fb51"
 dependencies = [
  "byteorder",
 ]
+
+[[package]]
+name = "svg"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f57a11872ea3f38eb99622ef7877fe207b3eeefbe877a49f08f9995d00f34a5"
 
 [[package]]
 name = "takeable-option"
