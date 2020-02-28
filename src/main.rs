@@ -1,4 +1,3 @@
-
 #[macro_use]
 extern crate glium;
 extern crate image;
@@ -9,6 +8,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::Cursor;
 
+use image::{GenericImage, GenericImageView, ImageBuffer, Pixel, RgbImage};
 use regex::Regex;
 
 fn main() {
@@ -20,6 +20,15 @@ fn main() {
   let maps = load_maps(&wad_file, lumps);
 
   println!("{:?}", maps[0]);
+
+  generate_image();
+}
+
+fn generate_image() {
+  let mut img: RgbImage = ImageBuffer::new(512, 512);
+  let pixel = image::Rgb([255, 0, 0]);
+  img.put_pixel(100, 100, pixel);
+  img.save("testimage.png").unwrap();
 }
 
 #[derive(Debug, Clone)]
@@ -63,10 +72,7 @@ fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
         let x = i16::from_le_bytes([wad_file[vertex_i], wad_file[vertex_i + 1]]);
         let y = i16::from_le_bytes([wad_file[vertex_i + 2], wad_file[vertex_i + 3]]);
 
-        current_map_vertexes.push(MapVertex{
-          x: x,
-          y: y,
-        });
+        current_map_vertexes.push(MapVertex { x: x, y: y });
 
         vertex_i += 4;
       }
