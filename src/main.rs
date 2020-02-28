@@ -16,6 +16,9 @@ use svg::node::element::path::Data;
 use svg::node::element::Path;
 use svg::Document;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 fn main() {
   let mut f = File::open("doomu.wad").unwrap();
   let mut wad_file = Vec::new();
@@ -24,28 +27,88 @@ fn main() {
   let lumps = load_lumps(&wad_file);
   let maps = load_maps(&wad_file, lumps);
 
-  println!("{:?}", maps[0]);
+  println!("{:?}", &maps[0]);
 
-  draw_map_svg();
+  draw_map_svg(&maps[0]);
 
   // generate_image();
 }
 
+struct Foo<'a> {
+  svg_data: Rc<&'a Data>,
+}
+
 // ORIGIN is top-left. y axis grows downward (as in, subtract to go up).
 
-fn draw_map_svg() {
-  let data = Data::new()
-    .move_to((50, 50))
-    .line_by((0, 30))
-    .line_by((50, 0))
-    .line_by((0, -50))
-    .close();
+fn draw_map_svg(map: &Map) {
+  let data = Data::new();
+    // .move_to((50, 50));
+  //   .line_by((0, 30))
+  //   .line_by((50, 0))
+  //   .line_by((0, -50))
+  //   .close();
+
+  let foo = Foo{svg_data: Rc::new(&data)};
+
+  // let data_rc = Rc::new(foo;
+  // data.borrow().move_to((50,50));
+
+  // let data = Data::new()
+  //   .move_to((50, 50));
+    // .line_by((0, 30))
+    // .line_by((50, 0))
+    // .line_by((0, -50))
+    // .close();
+
+  for line in &map.linedefs {
+    let v1_index = line.start_vertex;
+    let v2_index = line.end_vertex;
+
+    let v1 = &map.vertexes[v1_index];
+    let v2 = &map.vertexes[v2_index];
+
+    // let a = data_rc.clone();
+    // let b = a.borrow();
+    // let c = *a;
+
+    let f = foo.svg_data.clone();
+    // f.line_by((v1.x, v1.y));
+
+    match Rc::try_unwrap(f) {
+      Ok(v) => {
+        v.line_by((v1.x, v1.y));
+      }
+      _ => {}
+    }
+
+    // let x = Rc::try_unwrap(f).unwrap();
+
+    // b.line_by((v2.x, v2.y));
+
+    // data_rc.get_mut().line_by((v1.x, v1.y));
+    // data_rc.get_mut().line_by((v2.x, v2.y));
+  }
+
+  // let x = data_rc.borrow();
+  // let y = *x;
+  // y.close();
+  // data_rc.get_mut().close();
+
+  // println!("{:?}", data_rc.get_mut());
+
+  // let a = data_rc.get_mut();
+  // let b = *a;
+
+  let f = foo.svg_data.clone();
+
+  let val = Rc::try_unwrap(f).ok().unwrap();
+  *val.close();
 
   let path = Path::new()
     .set("fill", "none")
     .set("stroke", "black")
-    .set("stroke-width", 0.1)
-    .set("d", data);
+    .set("stroke-width", 0.1);
+    // .set("d", *val);
 
   let document = Document::new().set("viewBox", (0, 0, 100, 100)).add(path);
 
