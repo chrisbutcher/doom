@@ -22,10 +22,10 @@ fn main() {
   let lumps = load_lumps(&wad_file);
   let maps = load_maps(&wad_file, lumps);
 
-  // for map in maps {
-  //   draw_map_svg(&map);
-  // }
-  draw_map_svg(&maps[0]);
+  for map in maps {
+    draw_map_svg(&map);
+  }
+  // draw_map_svg(&maps[0]);
 }
 
 // ORIGIN is top-left. y axis grows downward (as in, subtract to go up).
@@ -33,13 +33,13 @@ fn main() {
 fn draw_map_svg(map: &Map) {
   let mut document = Document::new();
 
-  let path = Path::new()
-    .set("fill", "none")
-    .set("stroke", "red")
-    .set("stroke-width", 100)
-    .set("d", Data::new().move_to((0, 0)).line_by((100, 0)).close());
+  // let path = Path::new()
+  //   .set("fill", "none")
+  //   .set("stroke", "red")
+  //   .set("stroke-width", 100)
+  //   .set("d", Data::new().move_to((0, 0)).line_by((100, 0)).close());
 
-  document = document.clone().add(path);
+  // document = document.clone().add(path);
 
   let mut left_most_x = 0;
   let mut right_most_x = 0;
@@ -116,7 +116,7 @@ fn draw_map_svg(map: &Map) {
   println!("upper_most_y: {}", upper_most_y);
   println!("lower_most_y: {}", lower_most_y);
 
-  document = document.clone().set("viewBox", (0, -1900, 10000, 10000));
+  document = document.clone().set("viewBox", (0, -3400, 10000, 10000));
   svg::save(filename.trim(), &document).unwrap();
 }
 
