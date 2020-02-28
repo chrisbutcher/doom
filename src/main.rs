@@ -3,21 +3,16 @@ extern crate glium;
 extern crate image;
 
 extern crate regex;
-// extern crate nannou;
 
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Cursor;
 
-use image::{GenericImage, GenericImageView, ImageBuffer, Pixel, RgbImage};
 use regex::Regex;
 
 use svg::node::element::path::Data;
 use svg::node::element::Path;
 use svg::Document;
-
-use std::cell::RefCell;
-use std::rc::Rc;
 
 fn main() {
   let mut f = File::open("doomu.wad").unwrap();
@@ -27,17 +22,16 @@ fn main() {
   let lumps = load_lumps(&wad_file);
   let maps = load_maps(&wad_file, lumps);
 
-  // println!("{:?}", &maps[0]);
-
+  // for map in maps {
+  //   draw_map_svg(&map);
+  // }
   draw_map_svg(&maps[0]);
-
-  // generate_image();
 }
 
 // ORIGIN is top-left. y axis grows downward (as in, subtract to go up).
 
 fn draw_map_svg(map: &Map) {
-  let mut document = Document::new().set("viewBox", (0, 1900, 3000, 3000));
+  let mut document = Document::new();
 
   let path = Path::new()
     .set("fill", "none")
@@ -47,30 +41,52 @@ fn draw_map_svg(map: &Map) {
 
   document = document.clone().add(path);
 
-  // let foop: Vec<LineDef> = vec![map.linedefs[0]];
-  let mut foop = Vec::new();
-  foop.push(&map.linedefs[0]);
+  let mut left_most_x = 0;
+  let mut right_most_x = 0;
+  let mut upper_most_y = 0;
+  let mut lower_most_y = 0;
 
   for line in &map.linedefs {
-  // for line in &foop {
     let v1_index = line.start_vertex;
     let v2_index = line.end_vertex;
 
     let v1 = &map.vertexes[v1_index];
     let v2 = &map.vertexes[v2_index];
 
-    println!("drawing line from x: {}, y: {} to x: {}, y: {}", v1.x, v1.y, v2.x, v2.y);
+    // finding image extents to center it.
+    if v1.x < left_most_x {
+      left_most_x = v1.x;
+    }
 
-    // [ ][ ][ ][ ][ ][ ][ ][ ]
-    // [ ][ ][ ][ ][ ][ ][ ][ ]
-    // [ ][ ][ ][ ][ ][ ][ ][ ]
-    // [ ][ ][ ][ ][ ][ ][ ][ ]
-    // [ ][ ][ ][ ][ ][ ][ ][ ]
-    // [ ][ ][ ][ ][ ][ ][ ][ ]
-    // [ ][ ][x][ ][ ][ ][ ][ ]
-    // [ ][ ][ ][ ][ ][ ][ ][ ]
-    // [ ][ ][ ][ ][ ][ ][ ][ ]
+    if v2.x < left_most_x {
+      left_most_x = v2.x;
+    }
 
+    if v1.x > right_most_x {
+      right_most_x = v1.x;
+    }
+
+    if v2.x > right_most_x {
+      right_most_x = v2.x;
+    }
+
+    //
+
+    if v1.y < lower_most_y {
+      lower_most_y = v1.y;
+    }
+
+    if v2.y < lower_most_y {
+      left_most_x = v2.y;
+    }
+
+    if v1.y > upper_most_y {
+      upper_most_y = v1.y;
+    }
+
+    if v2.y > upper_most_y {
+      upper_most_y = v2.y;
+    }
 
     let path = Path::new()
       .set("fill", "none")
@@ -87,14 +103,21 @@ fn draw_map_svg(map: &Map) {
     document = document.clone().add(path);
   }
 
-  svg::save("image.svg", &document).unwrap();
-}
+  let filename = format!(
+    "{}{}{}{}.svg",
+    map.name.chars().nth(0).unwrap(),
+    map.name.chars().nth(1).unwrap(),
+    map.name.chars().nth(2).unwrap(),
+    map.name.chars().nth(3).unwrap(),
+  );
 
-fn generate_image() {
-  let mut img: RgbImage = ImageBuffer::new(512, 512);
-  let pixel = image::Rgb([255, 0, 0]);
-  img.put_pixel(100, 100, pixel);
-  img.save("testimage.png").unwrap();
+  println!("left_most_x: {}", left_most_x);
+  println!("right_most_x: {}", right_most_x);
+  println!("upper_most_y: {}", upper_most_y);
+  println!("lower_most_y: {}", lower_most_y);
+
+  document = document.clone().set("viewBox", (0, -1900, 10000, 10000));
+  svg::save(filename.trim(), &document).unwrap();
 }
 
 #[derive(Debug, Clone)]
@@ -146,7 +169,12 @@ fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
           name: current_map_name.unwrap(),
           vertexes: current_map_vertexes.to_owned(),
           linedefs: current_map_linedefs.to_owned(),
-        })
+        });
+
+        // current_map_name = None;
+        current_map_vertexes = Vec::new();
+        current_map_linedefs = Vec::new();
+        current_map_sidedefs = Vec::new();
       }
 
       current_map_name = Some(lump.name.clone());
