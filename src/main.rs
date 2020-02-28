@@ -41,6 +41,27 @@ struct MapVertex {
 struct Map {
   name: String,
   vertexes: Vec<MapVertex>,
+  linedefs: Vec<LineDef>,
+}
+
+#[derive(Debug, Clone)]
+struct LineDef {
+  // TODO: Flags, special type, sector tag: https://doomwiki.org/wiki/Linedef
+  start_vertex: usize,
+  end_vertex: usize,
+  front_sidedef: usize,
+  back_sidedef: usize,
+}
+
+#[derive(Debug, Clone)]
+struct SideDef {
+  // TODO: Sector facing: https://doomwiki.org/wiki/Sidedef
+  x_offset: i16,
+  y_offset: i16,
+  name_of_upper_texture: String,
+  name_of_lower_texture: String,
+  name_of_middle_texture: String,
+  sector_facing: usize, // TODO
 }
 
 fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
@@ -49,6 +70,8 @@ fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
   let mut maps = Vec::new();
   let mut current_map_name: Option<String> = None;
   let mut current_map_vertexes = Vec::new();
+  let mut current_map_linedefs = Vec::new();
+  let mut current_map_sidedefs = Vec::new();
 
   for lump in &lumps {
     if map_name_pattern.is_match(&lump.name) {
@@ -56,6 +79,7 @@ fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
         maps.push(Map {
           name: current_map_name.unwrap(),
           vertexes: current_map_vertexes.to_owned(),
+          linedefs: current_map_linedefs.to_owned(),
         })
       }
 
@@ -66,7 +90,7 @@ fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
       let mut vertex_i = lump.filepos;
       let vertex_count = lump.size / 4; // each vertex is 4 bytes, 2x 16-bit (or 2 byte) signed integers
 
-      current_map_vertexes = vec![];
+      // current_map_vertexes = vec![];
 
       for _ in 0..vertex_count {
         let x = i16::from_le_bytes([wad_file[vertex_i], wad_file[vertex_i + 1]]);
@@ -76,8 +100,88 @@ fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
 
         vertex_i += 4;
       }
+    }
 
-      println!("Found vertexes!");
+    if lump.name == "LINEDEFS" {
+      let mut line_i = lump.filepos;
+      let line_count = lump.size / 14; // each line is 14 bytes, 7x 16-bit (or 2 byte) signed integers
+
+      // current_map_linedefs = vec![];
+
+      for _ in 0..line_count {
+        let start_vertex = i16::from_le_bytes([wad_file[line_i], wad_file[line_i + 1]]);
+        let end_vertex = i16::from_le_bytes([wad_file[line_i + 2], wad_file[line_i + 3]]);
+        let front_sidedef = i16::from_le_bytes([wad_file[line_i + 10], wad_file[line_i + 11]]);
+        let back_sidedef = i16::from_le_bytes([wad_file[line_i + 12], wad_file[line_i + 13]]);
+
+        current_map_linedefs.push(LineDef {
+          start_vertex: start_vertex as usize,
+          end_vertex: end_vertex as usize,
+          front_sidedef: front_sidedef as usize,
+          back_sidedef: back_sidedef as usize,
+        });
+
+        line_i += 14;
+      }
+    }
+
+    if lump.name == "SIDEDEFS" {
+      let mut sidedef_i = lump.filepos;
+      let sidedef_count = lump.size / 30; // each sidedef is 30 bytes
+
+      // current_map_sidedefs = vec![];
+
+      for _ in 0..sidedef_count {
+        let x_offset = i16::from_le_bytes([wad_file[sidedef_i], wad_file[sidedef_i + 1]]);
+        let y_offset = i16::from_le_bytes([wad_file[sidedef_i + 2], wad_file[sidedef_i + 3]]);
+
+        let name_of_upper_texture: String = format!(
+          "{}{}{}{}{}{}{}{}",
+          wad_file[sidedef_i + 4] as char,
+          wad_file[sidedef_i + 5] as char,
+          wad_file[sidedef_i + 6] as char,
+          wad_file[sidedef_i + 7] as char,
+          wad_file[sidedef_i + 8] as char,
+          wad_file[sidedef_i + 9] as char,
+          wad_file[sidedef_i + 10] as char,
+          wad_file[sidedef_i + 11] as char,
+        );
+
+        let name_of_lower_texture: String = format!(
+          "{}{}{}{}{}{}{}{}",
+          wad_file[sidedef_i + 12] as char,
+          wad_file[sidedef_i + 13] as char,
+          wad_file[sidedef_i + 14] as char,
+          wad_file[sidedef_i + 15] as char,
+          wad_file[sidedef_i + 16] as char,
+          wad_file[sidedef_i + 17] as char,
+          wad_file[sidedef_i + 18] as char,
+          wad_file[sidedef_i + 19] as char,
+        );
+
+        let name_of_middle_texture: String = format!(
+          "{}{}{}{}{}{}{}{}",
+          wad_file[sidedef_i + 20] as char,
+          wad_file[sidedef_i + 21] as char,
+          wad_file[sidedef_i + 22] as char,
+          wad_file[sidedef_i + 23] as char,
+          wad_file[sidedef_i + 24] as char,
+          wad_file[sidedef_i + 25] as char,
+          wad_file[sidedef_i + 26] as char,
+          wad_file[sidedef_i + 27] as char,
+        );
+
+        current_map_sidedefs.push(SideDef {
+          x_offset: x_offset,
+          y_offset: y_offset,
+          name_of_upper_texture: name_of_upper_texture,
+          name_of_lower_texture: name_of_lower_texture,
+          name_of_middle_texture: name_of_middle_texture,
+          sector_facing: 0,
+        });
+
+        sidedef_i += 30;
+      }
     }
   }
 
