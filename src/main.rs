@@ -24,10 +24,10 @@ fn main() {
   let lumps = load_lumps(&wad_file);
   let maps = load_maps(&wad_file, lumps);
 
-  // for map in maps {
-  //   draw_map_svg(&map);
-  // }
-  draw_map_svg(&maps[0]);
+  for map in maps {
+    draw_map_svg(&map);
+  }
+  // draw_map_svg(&maps[0]);
 }
 
 // ORIGIN is top-left. y axis grows downward (as in, subtract to go up).
@@ -43,10 +43,10 @@ struct MapCenterer {
 impl MapCenterer {
   fn new() -> MapCenterer {
     MapCenterer {
-      left_most_x: 0,
-      right_most_x: 0,
-      lower_most_y: 0,
-      upper_most_y: 0,
+      left_most_x: std::i16::MAX,
+      right_most_x: std::i16::MIN,
+      lower_most_y: std::i16::MAX,
+      upper_most_y: std::i16::MIN,
     }
   }
 
@@ -65,7 +65,7 @@ fn draw_map_svg(map: &Map) {
   let mut document = Document::new();
 
   let map_x_offset = 0 - map.map_centerer.left_most_x;
-  let map_y_offset = 0 - map.map_centerer.lower_most_y;
+  let map_y_offset = 0 - map.map_centerer.upper_most_y;
 
   for line in &map.linedefs {
     let v1_index = line.start_vertex;
@@ -88,8 +88,8 @@ fn draw_map_svg(map: &Map) {
       .set(
         "d",
         Data::new()
-          .move_to((v1_x, v1_y)) // flipping y axis at the last moment to account for SVG convention
-          .line_to((v2_x, v2_y))
+          .move_to((v1_x, -v1_y)) // flipping y axis at the last moment to account for SVG convention
+          .line_to((v2_x, -v2_y))
           .close(),
       );
 
