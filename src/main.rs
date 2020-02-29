@@ -14,6 +14,8 @@ use svg::node::element::path::Data;
 use svg::node::element::Path;
 use svg::Document;
 
+use std::cmp;
+
 fn main() {
   let mut f = File::open("doomu.wad").unwrap();
   let mut wad_file = Vec::new();
@@ -22,29 +24,48 @@ fn main() {
   let lumps = load_lumps(&wad_file);
   let maps = load_maps(&wad_file, lumps);
 
-  for map in maps {
-    draw_map_svg(&map);
-  }
-  // draw_map_svg(&maps[0]);
+  // for map in maps {
+  //   draw_map_svg(&map);
+  // }
+  draw_map_svg(&maps[0]);
 }
 
 // ORIGIN is top-left. y axis grows downward (as in, subtract to go up).
 
+#[derive(Debug, Copy, Clone)]
+struct MapCenterer {
+  left_most_x: i16,
+  right_most_x: i16,
+  lower_most_y: i16,
+  upper_most_y: i16,
+}
+
+impl MapCenterer {
+  fn new() -> MapCenterer {
+    MapCenterer {
+      left_most_x: 0,
+      right_most_x: 0,
+      lower_most_y: 0,
+      upper_most_y: 0,
+    }
+  }
+
+  fn record_x(&mut self, x: i16) {
+    self.left_most_x = cmp::min(self.left_most_x, x);
+    self.right_most_x = cmp::max(self.right_most_x, x);
+  }
+
+  fn record_y(&mut self, y: i16) {
+    self.lower_most_y = cmp::min(self.lower_most_y, y);
+    self.upper_most_y = cmp::max(self.upper_most_y, y);
+  }
+}
+
 fn draw_map_svg(map: &Map) {
   let mut document = Document::new();
 
-  // let path = Path::new()
-  //   .set("fill", "none")
-  //   .set("stroke", "red")
-  //   .set("stroke-width", 100)
-  //   .set("d", Data::new().move_to((0, 0)).line_by((100, 0)).close());
-
-  // document = document.clone().add(path);
-
-  let mut left_most_x = 0;
-  let mut right_most_x = 0;
-  let mut upper_most_y = 0;
-  let mut lower_most_y = 0;
+  let map_x_offset = 0 - map.map_centerer.left_most_x;
+  let map_y_offset = 0 - map.map_centerer.lower_most_y;
 
   for line in &map.linedefs {
     let v1_index = line.start_vertex;
@@ -53,40 +74,12 @@ fn draw_map_svg(map: &Map) {
     let v1 = &map.vertexes[v1_index];
     let v2 = &map.vertexes[v2_index];
 
+    let v1_x = v1.x + map_x_offset;
+    let v2_x = v2.x + map_x_offset;
+    let v1_y = v1.y + map_y_offset;
+    let v2_y = v2.y + map_y_offset;
+
     // finding image extents to center it.
-    if v1.x < left_most_x {
-      left_most_x = v1.x;
-    }
-
-    if v2.x < left_most_x {
-      left_most_x = v2.x;
-    }
-
-    if v1.x > right_most_x {
-      right_most_x = v1.x;
-    }
-
-    if v2.x > right_most_x {
-      right_most_x = v2.x;
-    }
-
-    //
-
-    if v1.y < lower_most_y {
-      lower_most_y = v1.y;
-    }
-
-    if v2.y < lower_most_y {
-      left_most_x = v2.y;
-    }
-
-    if v1.y > upper_most_y {
-      upper_most_y = v1.y;
-    }
-
-    if v2.y > upper_most_y {
-      upper_most_y = v2.y;
-    }
 
     let path = Path::new()
       .set("fill", "none")
@@ -95,8 +88,8 @@ fn draw_map_svg(map: &Map) {
       .set(
         "d",
         Data::new()
-          .move_to((v1.x, -v1.y))
-          .line_to((v2.x, -v2.y))
+          .move_to((v1_x, v1_y)) // flipping y axis at the last moment to account for SVG convention
+          .line_to((v2_x, v2_y))
           .close(),
       );
 
@@ -111,12 +104,9 @@ fn draw_map_svg(map: &Map) {
     map.name.chars().nth(3).unwrap(),
   );
 
-  println!("left_most_x: {}", left_most_x);
-  println!("right_most_x: {}", right_most_x);
-  println!("upper_most_y: {}", upper_most_y);
-  println!("lower_most_y: {}", lower_most_y);
-
-  document = document.clone().set("viewBox", (0, -3400, 10000, 10000));
+  let width = map.map_centerer.right_most_x - map.map_centerer.left_most_x;
+  let height = map.map_centerer.upper_most_y - map.map_centerer.lower_most_y;
+  document = document.clone().set("viewBox", (0, -50, width, height));
   svg::save(filename.trim(), &document).unwrap();
 }
 
@@ -131,6 +121,7 @@ struct Map {
   name: String,
   vertexes: Vec<MapVertex>,
   linedefs: Vec<LineDef>,
+  map_centerer: MapCenterer,
 }
 
 #[derive(Debug, Clone)]
@@ -159,6 +150,7 @@ fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
   let mut maps = Vec::new();
   let mut current_map_name: Option<String> = None;
   let mut current_map_vertexes = Vec::new();
+  let mut current_map_centerer = MapCenterer::new();
   let mut current_map_linedefs = Vec::new();
   let mut current_map_sidedefs = Vec::new();
 
@@ -169,6 +161,7 @@ fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
           name: current_map_name.unwrap(),
           vertexes: current_map_vertexes.to_owned(),
           linedefs: current_map_linedefs.to_owned(),
+          map_centerer: current_map_centerer.to_owned(),
         });
 
         // current_map_name = None;
@@ -187,6 +180,9 @@ fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
       for _ in 0..vertex_count {
         let x = i16::from_le_bytes([wad_file[vertex_i], wad_file[vertex_i + 1]]);
         let y = i16::from_le_bytes([wad_file[vertex_i + 2], wad_file[vertex_i + 3]]);
+
+        current_map_centerer.record_x(x);
+        current_map_centerer.record_y(y);
 
         current_map_vertexes.push(MapVertex { x: x, y: y });
 
