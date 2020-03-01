@@ -79,8 +79,6 @@ fn draw_map_svg(map: &Map) {
     let v1_y = v1.y + map_y_offset;
     let v2_y = v2.y + map_y_offset;
 
-    // finding image extents to center it.
-
     let path = Path::new()
       .set("fill", "none")
       .set("stroke", "black")
