@@ -43,10 +43,10 @@ struct MapCenterer {
 impl MapCenterer {
   fn new() -> MapCenterer {
     MapCenterer {
-      left_most_x: std::i16::MAX,
-      right_most_x: std::i16::MIN,
-      lower_most_y: std::i16::MAX,
-      upper_most_y: std::i16::MIN,
+      left_most_x: i16::max_value(),
+      right_most_x: i16::min_value(),
+      lower_most_y: i16::max_value(),
+      upper_most_y: i16::min_value(),
     }
   }
 
@@ -104,7 +104,11 @@ fn draw_map_svg(map: &Map) {
 
   let width = map.map_centerer.right_most_x - map.map_centerer.left_most_x;
   let height = map.map_centerer.upper_most_y - map.map_centerer.lower_most_y;
-  document = document.clone().set("viewBox", (0, -50, width, height));
+  document = document
+    .clone()
+    .set("viewBox", (-10, -10, width as i32 * 5, height as i32 * 5))
+    .set("width", width)
+    .set("height", height);
   svg::save(filename.trim(), &document).unwrap();
 }
 
@@ -166,6 +170,7 @@ fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
         current_map_vertexes = Vec::new();
         current_map_linedefs = Vec::new();
         current_map_sidedefs = Vec::new();
+        current_map_centerer = MapCenterer::new();
       }
 
       current_map_name = Some(lump.name.clone());
