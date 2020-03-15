@@ -24,10 +24,14 @@ fn main() {
   let lumps = load_lumps(&wad_file);
   let maps = load_maps(&wad_file, lumps);
 
-  for map in maps {
-    draw_map_svg(&map);
-  }
-  // draw_map_svg(&maps[0]);
+  let current_map = &maps[0];
+
+  // for map in maps {
+  //   draw_map_svg(&map);
+  // }
+  draw_map_svg(current_map);
+
+  println!("{:?}", current_map);
 }
 
 // ORIGIN is top-left. y axis grows downward (as in, subtract to go up).
@@ -124,6 +128,7 @@ struct Map {
   vertexes: Vec<MapVertex>,
   linedefs: Vec<LineDef>,
   map_centerer: MapCenterer,
+  sectors: Vec<Sector>,
 }
 
 #[derive(Debug, Clone)]
@@ -137,13 +142,23 @@ struct LineDef {
 
 #[derive(Debug, Clone)]
 struct SideDef {
-  // TODO: Sector facing: https://doomwiki.org/wiki/Sidedef
   x_offset: i16,
   y_offset: i16,
   name_of_upper_texture: String,
   name_of_lower_texture: String,
   name_of_middle_texture: String,
-  sector_facing: usize, // TODO
+  sector_facing: usize,
+}
+
+#[derive(Debug, Clone)]
+struct Sector {
+  floor_height: i16,
+  ceiling_height: i16,
+  name_of_floor_texture: String,
+  name_of_ceiling_texture: String,
+  light_level: i16,
+  sector_type: i16,
+  tag_number: i16,
 }
 
 fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
@@ -152,9 +167,10 @@ fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
   let mut maps = Vec::new();
   let mut current_map_name: Option<String> = None;
   let mut current_map_vertexes = Vec::new();
-  let mut current_map_centerer = MapCenterer::new();
   let mut current_map_linedefs = Vec::new();
   let mut current_map_sidedefs = Vec::new();
+  let mut current_map_sectors = Vec::new();
+  let mut current_map_centerer = MapCenterer::new();
 
   for lump in &lumps {
     if map_name_pattern.is_match(&lump.name) {
@@ -164,12 +180,14 @@ fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
           vertexes: current_map_vertexes.to_owned(),
           linedefs: current_map_linedefs.to_owned(),
           map_centerer: current_map_centerer.to_owned(),
+          sectors: current_map_sectors.to_owned(),
         });
 
         // current_map_name = None;
         current_map_vertexes = Vec::new();
         current_map_linedefs = Vec::new();
         current_map_sidedefs = Vec::new();
+        current_map_sectors = Vec::new();
         current_map_centerer = MapCenterer::new();
       }
 
@@ -258,16 +276,69 @@ fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
           wad_file[sidedef_i + 27] as char,
         );
 
+        let sector_facing =
+          i16::from_le_bytes([wad_file[sidedef_i + 28], wad_file[sidedef_i + 29]]) as usize;
+
         current_map_sidedefs.push(SideDef {
           x_offset: x_offset,
           y_offset: y_offset,
           name_of_upper_texture: name_of_upper_texture,
           name_of_lower_texture: name_of_lower_texture,
           name_of_middle_texture: name_of_middle_texture,
-          sector_facing: 0,
+          sector_facing: sector_facing,
         });
 
         sidedef_i += 30;
+      }
+    }
+
+    if lump.name == "SECTORS\0" {
+      let mut sector_i = lump.filepos;
+      let sector_count = lump.size / 26; // each sector is 26 bytes
+
+      for _ in 0..sector_count {
+        let floor_height = i16::from_le_bytes([wad_file[sector_i], wad_file[sector_i + 1]]);
+        let ceiling_height = i16::from_le_bytes([wad_file[sector_i + 2], wad_file[sector_i + 3]]);
+
+        let name_of_floor_texture: String = format!(
+          "{}{}{}{}{}{}{}{}",
+          wad_file[sector_i + 4] as char,
+          wad_file[sector_i + 5] as char,
+          wad_file[sector_i + 6] as char,
+          wad_file[sector_i + 7] as char,
+          wad_file[sector_i + 8] as char,
+          wad_file[sector_i + 9] as char,
+          wad_file[sector_i + 10] as char,
+          wad_file[sector_i + 11] as char,
+        );
+
+        let name_of_ceiling_texture: String = format!(
+          "{}{}{}{}{}{}{}{}",
+          wad_file[sector_i + 12] as char,
+          wad_file[sector_i + 13] as char,
+          wad_file[sector_i + 14] as char,
+          wad_file[sector_i + 15] as char,
+          wad_file[sector_i + 16] as char,
+          wad_file[sector_i + 17] as char,
+          wad_file[sector_i + 18] as char,
+          wad_file[sector_i + 19] as char,
+        );
+
+        let light_level = i16::from_le_bytes([wad_file[sector_i + 20], wad_file[sector_i + 21]]);
+        let sector_type = i16::from_le_bytes([wad_file[sector_i + 22], wad_file[sector_i + 23]]);
+        let tag_number = i16::from_le_bytes([wad_file[sector_i + 24], wad_file[sector_i + 25]]);
+
+        current_map_sectors.push(Sector {
+          floor_height: floor_height,
+          ceiling_height: ceiling_height,
+          name_of_floor_texture: name_of_floor_texture,
+          name_of_ceiling_texture: name_of_ceiling_texture,
+          light_level: light_level,
+          sector_type: sector_type,
+          tag_number: tag_number,
+        });
+
+        sector_i += 26;
       }
     }
   }
