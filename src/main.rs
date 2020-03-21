@@ -422,6 +422,7 @@ fn render_scene(map: &Map) {
 
   let event_loop = glutin::event_loop::EventLoop::new();
   let window_builder = glutin::window::WindowBuilder::new();
+
   let context_builder = glutin::ContextBuilder::new().with_depth_buffer(24);
   let display = glium::Display::new(window_builder, context_builder, &event_loop).unwrap();
 
@@ -464,10 +465,10 @@ fn render_scene(map: &Map) {
   let mut shapes = Vec::new();
   // shapes.push(shape);
 
-  let bar = &map.vertexes[0];
+  let bar = &map.vertexes[400];
   let first_vertex = bar.clone();
 
-  const WALL_HEIGHT: f32 = 3.0;
+  const WALL_HEIGHT: f32 = 50.0;
 
   for line in &map.linedefs {
     let start_vertex_index = line.start_vertex;
@@ -638,8 +639,8 @@ fn render_scene(map: &Map) {
     // let camera_position = [0.5, 0.0, -3.0];
     let camera_position = [
       first_vertex.x as f32,
-      4.0 as f32,
-      (first_vertex.y - 100) as f32,
+      600.0 as f32,
+      (first_vertex.y - 3000) as f32,
     ];
 
     let view = view_matrix(&camera_position, &[-0.5, -0.2, 3.0], &[0.0, 1.0, 0.0]);
@@ -649,7 +650,7 @@ fn render_scene(map: &Map) {
       let aspect_ratio = height as f32 / width as f32;
 
       let fov: f32 = 3.141592 / 3.0;
-      let zfar = 1024.0;
+      let zfar = 100_000.0;
       let znear = 0.1;
 
       let f = 1.0 / (fov / 2.0).tan();
