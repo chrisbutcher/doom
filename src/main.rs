@@ -34,6 +34,8 @@ fn main() {
   draw_map_svg(current_map);
 
   println!("{:?}", current_map);
+
+  render_scene(current_map);
 }
 
 // ORIGIN is top-left. y axis grows downward (as in, subtract to go up).
@@ -414,14 +416,14 @@ fn load_lumps(wad_file: &Vec<u8>) -> Vec<Lump> {
   lumps
 }
 
-fn render_scene() {
+fn render_scene(map: &Map) {
   #[allow(unused_imports)]
   use glium::{glutin, Surface};
 
   let event_loop = glutin::event_loop::EventLoop::new();
-  let wb = glutin::window::WindowBuilder::new();
-  let cb = glutin::ContextBuilder::new().with_depth_buffer(24);
-  let display = glium::Display::new(wb, cb, &event_loop).unwrap();
+  let window_builder = glutin::window::WindowBuilder::new();
+  let context_builder = glutin::ContextBuilder::new().with_depth_buffer(24);
+  let display = glium::Display::new(window_builder, context_builder, &event_loop).unwrap();
 
   #[derive(Copy, Clone)]
   struct Vertex {
@@ -432,32 +434,84 @@ fn render_scene() {
 
   implement_vertex!(Vertex, position, normal, tex_coords);
 
-  let shape = glium::vertex::VertexBuffer::new(
-    &display,
-    &[
+  // let shape = glium::vertex::VertexBuffer::new(
+  //   &display,
+  //   &[
+  //     Vertex {
+  //       position: [-1.0, 1.0, 0.0],
+  //       normal: [0.0, 0.0, -1.0],
+  //       tex_coords: [0.0, 1.0],
+  //     },
+  //     Vertex {
+  //       position: [1.0, 1.0, 0.0],
+  //       normal: [0.0, 0.0, -1.0],
+  //       tex_coords: [1.0, 1.0],
+  //     },
+  //     Vertex {
+  //       position: [-1.0, -1.0, 0.0],
+  //       normal: [0.0, 0.0, -1.0],
+  //       tex_coords: [0.0, 0.0],
+  //     },
+  //     Vertex {
+  //       position: [1.0, -1.0, 0.0],
+  //       normal: [0.0, 0.0, -1.0],
+  //       tex_coords: [1.0, 0.0],
+  //     },
+  //   ],
+  // )
+  // .unwrap();
+
+  let mut shapes = Vec::new();
+  // shapes.push(shape);
+
+  let bar = &map.vertexes[0];
+  let first_vertex = bar.clone();
+
+  const WALL_HEIGHT: f32 = 3.0;
+
+  for line in &map.linedefs {
+    let start_vertex_index = line.start_vertex;
+    let end_vertex_index = line.end_vertex;
+
+    let start_vertex = &map.vertexes[start_vertex_index];
+    let end_vertex = &map.vertexes[end_vertex_index];
+
+    let foo = [
       Vertex {
-        position: [-1.0, 1.0, 0.0],
-        normal: [0.0, 0.0, -1.0],
-        tex_coords: [0.0, 1.0],
-      },
-      Vertex {
-        position: [1.0, 1.0, 0.0],
-        normal: [0.0, 0.0, -1.0],
-        tex_coords: [1.0, 1.0],
-      },
-      Vertex {
-        position: [-1.0, -1.0, 0.0],
+        position: [start_vertex.x as f32, 0.0, start_vertex.y as f32],
         normal: [0.0, 0.0, -1.0],
         tex_coords: [0.0, 0.0],
       },
       Vertex {
-        position: [1.0, -1.0, 0.0],
+        position: [end_vertex.x as f32, 0.0, end_vertex.y as f32],
         normal: [0.0, 0.0, -1.0],
         tex_coords: [1.0, 0.0],
       },
-    ],
-  )
-  .unwrap();
+      Vertex {
+        position: [start_vertex.x as f32, WALL_HEIGHT, start_vertex.y as f32],
+        normal: [0.0, 0.0, -1.0],
+        tex_coords: [0.0, 1.0],
+      },
+      Vertex {
+        position: [end_vertex.x as f32, 0.0, end_vertex.y as f32],
+        normal: [0.0, 0.0, -1.0],
+        tex_coords: [1.0, 0.0],
+      },
+      Vertex {
+        position: [end_vertex.x as f32, WALL_HEIGHT, end_vertex.y as f32],
+        normal: [0.0, 0.0, -1.0],
+        tex_coords: [1.0, 1.0],
+      },
+      Vertex {
+        position: [start_vertex.x as f32, WALL_HEIGHT, start_vertex.y as f32],
+        normal: [0.0, 0.0, -1.0],
+        tex_coords: [0.0, 1.0],
+      },
+    ];
+
+    let shape2 = glium::vertex::VertexBuffer::new(&display, &foo).unwrap();
+    shapes.push(shape2);
+  }
 
   let image = image::load(
     Cursor::new(&include_bytes!("../tuto-14-diffuse.jpg")[..]),
@@ -465,6 +519,7 @@ fn render_scene() {
   )
   .unwrap()
   .to_rgba();
+
   let image_dimensions = image.dimensions();
   let image =
     glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
@@ -483,15 +538,19 @@ fn render_scene() {
 
   let vertex_shader_src = r#"
     #version 150
+    
     in vec3 position;
     in vec3 normal;
     in vec2 tex_coords;
+    
     out vec3 v_normal;
     out vec3 v_position;
     out vec2 v_tex_coords;
+    
     uniform mat4 perspective;
     uniform mat4 view;
     uniform mat4 model;
+
     void main() {
       v_tex_coords = tex_coords;
       mat4 modelview = view * model;
@@ -503,14 +562,19 @@ fn render_scene() {
 
   let fragment_shader_src = r#"
     #version 140
+    
     in vec3 v_normal;
     in vec3 v_position;
     in vec2 v_tex_coords;
+    
     out vec4 color;
+    
     uniform vec3 u_light;
     uniform sampler2D diffuse_tex;
     uniform sampler2D normal_tex;
+    
     const vec3 specular_color = vec3(1.0, 1.0, 1.0);
+    
     mat3 cotangent_frame(vec3 normal, vec3 pos, vec2 uv) {
       vec3 dp1 = dFdx(pos);
       vec3 dp2 = dFdy(pos);
@@ -523,6 +587,7 @@ fn render_scene() {
       float invmax = inversesqrt(max(dot(T, T), dot(B, B)));
       return mat3(T * invmax, B * invmax, normal);
     }
+
     void main() {
       vec3 diffuse_color = texture(diffuse_tex, v_tex_coords).rgb;
       vec3 ambient_color = diffuse_color * 0.1;
@@ -570,7 +635,14 @@ fn render_scene() {
       [0.0, 0.0, 0.0, 1.0f32],
     ];
 
-    let view = view_matrix(&[0.5, 0.2, -3.0], &[-0.5, -0.2, 3.0], &[0.0, 1.0, 0.0]);
+    // let camera_position = [0.5, 0.0, -3.0];
+    let camera_position = [
+      first_vertex.x as f32,
+      4.0 as f32,
+      (first_vertex.y - 100) as f32,
+    ];
+
+    let view = view_matrix(&camera_position, &[-0.5, -0.2, 3.0], &[0.0, 1.0, 0.0]);
 
     let perspective = {
       let (width, height) = target.get_dimensions();
@@ -601,16 +673,18 @@ fn render_scene() {
       ..Default::default()
     };
 
-    target
-      .draw(
-        &shape,
-        glium::index::NoIndices(glium::index::PrimitiveType::TriangleStrip),
-        &program,
-        &uniform! { model: model, view: view, perspective: perspective,
-        u_light: light, diffuse_tex: &diffuse_texture, normal_tex: &normal_map },
-        &params,
-      )
-      .unwrap();
+    for shape in &shapes {
+      target
+        .draw(
+          shape,
+          glium::index::NoIndices(glium::index::PrimitiveType::TriangleStrip),
+          &program,
+          &uniform! { model: model, view: view, perspective: perspective,
+          u_light: light, diffuse_tex: &diffuse_texture, normal_tex: &normal_map },
+          &params,
+        )
+        .unwrap();
+    }
     target.finish().unwrap();
   });
 }
