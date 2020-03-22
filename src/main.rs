@@ -311,11 +311,11 @@ fn render_scene(map: &Map) {
     // let camera_position = [0.5, 0.0, -3.0];
     let camera_position = [
       first_vertex.x as f32,
-      600.0 as f32,
-      (first_vertex.y - 3000) as f32,
+      700.0 as f32,
+      (first_vertex.y - 4000) as f32,
     ];
 
-    let view = view_matrix(&camera_position, &[-0.5, -0.2, 3.0], &[0.0, 1.0, 0.0]);
+    let view = view_matrix(&camera_position, &[-0.5, -0.6, 4.0], &[0.0, 1.0, 0.0]);
 
     let perspective = {
       let (width, height) = target.get_dimensions();
