@@ -88,6 +88,51 @@ pub struct Sector {
   tag_number: i16,
 }
 
+use glium::glutin;
+fn update_camera(
+  current_position: [f32; 3],
+  current_rotation: [f32; 3],
+  key_code: glutin::event::VirtualKeyCode,
+) -> ([f32; 3], [f32; 3]) {
+  let mut new_position = current_position;
+  let mut new_rotation = current_rotation;
+
+  use glutin::event::VirtualKeyCode;
+
+  const MOVE_SPEED: f32 = 50.0;
+  const ROTATE_SPEED: f32 = 0.1;
+
+  match key_code {
+    VirtualKeyCode::W => {
+      new_position[2] += MOVE_SPEED;
+    }
+    VirtualKeyCode::A => {
+      new_position[0] -= MOVE_SPEED;
+    }
+    VirtualKeyCode::S => {
+      new_position[2] -= MOVE_SPEED;
+    }
+    VirtualKeyCode::D => {
+      new_position[0] += MOVE_SPEED;
+    }
+    VirtualKeyCode::Up => {
+      new_position[1] += MOVE_SPEED;
+    }
+    VirtualKeyCode::Down => {
+      new_position[1] -= MOVE_SPEED;
+    }
+    VirtualKeyCode::Q => {
+      new_rotation[0] -= ROTATE_SPEED;
+    }
+    VirtualKeyCode::E => {
+      new_rotation[0] += ROTATE_SPEED;
+    }
+    _ => (),
+  }
+
+  (new_position, new_rotation)
+}
+
 fn render_scene(map: &Map) {
   #[allow(unused_imports)]
   use glium::{glutin, Surface};
@@ -275,18 +320,39 @@ fn render_scene(map: &Map) {
     }
   "#;
 
+  // let camera_position = [0.5, 0.0, -3.0];
+  let mut camera_position = [
+    first_vertex.x as f32,
+    700.0 as f32,
+    (first_vertex.y - 4000) as f32,
+  ];
+
+  let mut camera_rotation = [-0.5, -0.6, 4.0];
+
   let program =
     glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
 
   event_loop.run(move |event, _, control_flow| {
     let next_frame_time = std::time::Instant::now() + std::time::Duration::from_nanos(16_666_667);
     *control_flow = glutin::event_loop::ControlFlow::WaitUntil(next_frame_time);
+    use glutin::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 
     match event {
       glutin::event::Event::WindowEvent { event, .. } => match event {
         glutin::event::WindowEvent::CloseRequested => {
           *control_flow = glutin::event_loop::ControlFlow::Exit;
           return;
+        }
+        glutin::event::WindowEvent::KeyboardInput { input, .. } => {
+          match (input.virtual_keycode, input.state) {
+            (Some(keycode), ElementState::Pressed) => {
+              println!("{:?}", keycode);
+              let result = update_camera(camera_position, camera_rotation, keycode);
+              camera_position = result.0;
+              camera_rotation = result.1;
+            }
+            _ => (),
+          }
         }
         _ => return,
       },
@@ -308,14 +374,7 @@ fn render_scene(map: &Map) {
       [0.0, 0.0, 0.0, 1.0f32],
     ];
 
-    // let camera_position = [0.5, 0.0, -3.0];
-    let camera_position = [
-      first_vertex.x as f32,
-      700.0 as f32,
-      (first_vertex.y - 4000) as f32,
-    ];
-
-    let view = view_matrix(&camera_position, &[-0.5, -0.6, 4.0], &[0.0, 1.0, 0.0]);
+    let view = view_matrix(&camera_position, &camera_rotation, &[0.0, 1.0, 0.0]);
 
     let perspective = {
       let (width, height) = target.get_dimensions();
