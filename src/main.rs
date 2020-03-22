@@ -152,35 +152,7 @@ fn render_scene(map: &Map) {
 
   implement_vertex!(Vertex, position, normal, tex_coords);
 
-  // let shape = glium::vertex::VertexBuffer::new(
-  //   &display,
-  //   &[
-  //     Vertex {
-  //       position: [-1.0, 1.0, 0.0],
-  //       normal: [0.0, 0.0, -1.0],
-  //       tex_coords: [0.0, 1.0],
-  //     },
-  //     Vertex {
-  //       position: [1.0, 1.0, 0.0],
-  //       normal: [0.0, 0.0, -1.0],
-  //       tex_coords: [1.0, 1.0],
-  //     },
-  //     Vertex {
-  //       position: [-1.0, -1.0, 0.0],
-  //       normal: [0.0, 0.0, -1.0],
-  //       tex_coords: [0.0, 0.0],
-  //     },
-  //     Vertex {
-  //       position: [1.0, -1.0, 0.0],
-  //       normal: [0.0, 0.0, -1.0],
-  //       tex_coords: [1.0, 0.0],
-  //     },
-  //   ],
-  // )
-  // .unwrap();
-
   let mut shapes = Vec::new();
-  // shapes.push(shape);
 
   let bar = &map.vertexes[400];
   let first_vertex = bar.clone();
@@ -335,7 +307,7 @@ fn render_scene(map: &Map) {
   event_loop.run(move |event, _, control_flow| {
     let next_frame_time = std::time::Instant::now() + std::time::Duration::from_nanos(16_666_667);
     *control_flow = glutin::event_loop::ControlFlow::WaitUntil(next_frame_time);
-    use glutin::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
+    use glutin::event::ElementState;
 
     match event {
       glutin::event::Event::WindowEvent { event, .. } => match event {
