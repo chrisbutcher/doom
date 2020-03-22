@@ -8,13 +8,9 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::Cursor;
 
-use regex::Regex;
-
-use svg::node::element::path::Data;
-use svg::node::element::Path;
-use svg::Document;
-
-use std::cmp;
+pub mod lumps;
+pub mod map_svg;
+pub mod maps;
 
 // TODO: Read this https://fasterthanli.me/blog/2020/a-half-hour-to-learn-rust/
 
@@ -23,120 +19,47 @@ fn main() {
   let mut wad_file = Vec::new();
   f.read_to_end(&mut wad_file).unwrap();
 
-  let lumps = load_lumps(&wad_file);
-  let maps = load_maps(&wad_file, lumps);
+  let lumps = lumps::load(&wad_file);
+  let maps = maps::load(&wad_file, lumps);
 
   let current_map = &maps[0];
 
   // for map in maps {
   //   draw_map_svg(&map);
   // }
-  draw_map_svg(current_map);
+  map_svg::draw_map_svg(current_map);
 
   println!("{:?}", current_map);
 
   render_scene(current_map);
 }
 
+#[derive(Debug)]
+pub struct Lump {
+  filepos: usize,
+  size: usize,
+  name: String,
+}
+
 // ORIGIN is top-left. y axis grows downward (as in, subtract to go up).
 
-#[derive(Debug, Copy, Clone)]
-struct MapCenterer {
-  left_most_x: i16,
-  right_most_x: i16,
-  lower_most_y: i16,
-  upper_most_y: i16,
-}
-
-impl MapCenterer {
-  fn new() -> MapCenterer {
-    MapCenterer {
-      left_most_x: i16::max_value(),
-      right_most_x: i16::min_value(),
-      lower_most_y: i16::max_value(),
-      upper_most_y: i16::min_value(),
-    }
-  }
-
-  fn record_x(&mut self, x: i16) {
-    self.left_most_x = cmp::min(self.left_most_x, x);
-    self.right_most_x = cmp::max(self.right_most_x, x);
-  }
-
-  fn record_y(&mut self, y: i16) {
-    self.lower_most_y = cmp::min(self.lower_most_y, y);
-    self.upper_most_y = cmp::max(self.upper_most_y, y);
-  }
-}
-
-fn draw_map_svg(map: &Map) {
-  let mut document = Document::new();
-
-  let map_x_offset = 0 - map.map_centerer.left_most_x;
-  let map_y_offset = 0 - map.map_centerer.upper_most_y;
-
-  for line in &map.linedefs {
-    let v1_index = line.start_vertex;
-    let v2_index = line.end_vertex;
-
-    let v1 = &map.vertexes[v1_index];
-    let v2 = &map.vertexes[v2_index];
-
-    let v1_x = v1.x + map_x_offset;
-    let v2_x = v2.x + map_x_offset;
-    let v1_y = v1.y + map_y_offset;
-    let v2_y = v2.y + map_y_offset;
-
-    let path = Path::new()
-      .set("fill", "none")
-      .set("stroke", "black")
-      .set("stroke-width", 10)
-      .set(
-        "d",
-        Data::new()
-          .move_to((v1_x, -v1_y)) // flipping y axis at the last moment to account for SVG convention
-          .line_to((v2_x, -v2_y))
-          .close(),
-      );
-
-    document = document.clone().add(path);
-  }
-
-  let filename = format!(
-    "{}{}{}{}.svg",
-    map.name.chars().nth(0).unwrap(),
-    map.name.chars().nth(1).unwrap(),
-    map.name.chars().nth(2).unwrap(),
-    map.name.chars().nth(3).unwrap(),
-  );
-
-  let width = map.map_centerer.right_most_x - map.map_centerer.left_most_x;
-  let height = map.map_centerer.upper_most_y - map.map_centerer.lower_most_y;
-  document = document
-    .clone()
-    .set("viewBox", (-10, -10, width as i32 * 5, height as i32 * 5))
-    .set("width", width)
-    .set("height", height);
-  svg::save(filename.trim(), &document).unwrap();
-}
-
 #[derive(Debug, Clone)]
-struct MapVertex {
+pub struct MapVertex {
   x: i16,
   y: i16,
 }
 
 #[derive(Debug)]
-struct Map {
+pub struct Map {
   name: String,
   vertexes: Vec<MapVertex>,
   linedefs: Vec<LineDef>,
-  map_centerer: MapCenterer,
+  map_centerer: map_svg::MapCenterer,
   sectors: Vec<Sector>,
 }
 
 #[derive(Debug, Clone)]
-struct LineDef {
+pub struct LineDef {
   // TODO: Flags, special type, sector tag: https://doomwiki.org/wiki/Linedef
   start_vertex: usize,
   end_vertex: usize,
@@ -145,7 +68,7 @@ struct LineDef {
 }
 
 #[derive(Debug, Clone)]
-struct SideDef {
+pub struct SideDef {
   x_offset: i16,
   y_offset: i16,
   name_of_upper_texture: String,
@@ -155,7 +78,7 @@ struct SideDef {
 }
 
 #[derive(Debug, Clone)]
-struct Sector {
+pub struct Sector {
   floor_height: i16,
   ceiling_height: i16,
   name_of_floor_texture: String,
@@ -163,257 +86,6 @@ struct Sector {
   light_level: i16,
   sector_type: i16,
   tag_number: i16,
-}
-
-fn load_maps(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
-  let map_name_pattern = Regex::new("E[0-9]+M[0-9]+").unwrap();
-
-  let mut maps = Vec::new();
-  let mut current_map_name: Option<String> = None;
-  let mut current_map_vertexes = Vec::new();
-  let mut current_map_linedefs = Vec::new();
-  let mut current_map_sidedefs = Vec::new();
-  let mut current_map_sectors = Vec::new();
-  let mut current_map_centerer = MapCenterer::new();
-
-  for lump in &lumps {
-    if map_name_pattern.is_match(&lump.name) {
-      if current_map_name.is_some() {
-        maps.push(Map {
-          name: current_map_name.unwrap(),
-          vertexes: current_map_vertexes.to_owned(),
-          linedefs: current_map_linedefs.to_owned(),
-          map_centerer: current_map_centerer.to_owned(),
-          sectors: current_map_sectors.to_owned(),
-        });
-
-        // current_map_name = None;
-        current_map_vertexes = Vec::new();
-        current_map_linedefs = Vec::new();
-        current_map_sidedefs = Vec::new();
-        current_map_sectors = Vec::new();
-        current_map_centerer = MapCenterer::new();
-      }
-
-      current_map_name = Some(lump.name.clone());
-    }
-
-    if lump.name == "VERTEXES" {
-      let mut vertex_i = lump.filepos;
-      let vertex_count = lump.size / 4; // each vertex is 4 bytes, 2x 16-bit (or 2 byte) signed integers
-
-      for _ in 0..vertex_count {
-        let x = i16::from_le_bytes([wad_file[vertex_i], wad_file[vertex_i + 1]]);
-        let y = i16::from_le_bytes([wad_file[vertex_i + 2], wad_file[vertex_i + 3]]);
-
-        current_map_centerer.record_x(x);
-        current_map_centerer.record_y(y);
-
-        current_map_vertexes.push(MapVertex { x: x, y: y });
-
-        vertex_i += 4;
-      }
-    }
-
-    if lump.name == "LINEDEFS" {
-      let mut line_i = lump.filepos;
-      let line_count = lump.size / 14; // each line is 14 bytes, 7x 16-bit (or 2 byte) signed integers
-
-      for _ in 0..line_count {
-        let start_vertex = i16::from_le_bytes([wad_file[line_i], wad_file[line_i + 1]]);
-        let end_vertex = i16::from_le_bytes([wad_file[line_i + 2], wad_file[line_i + 3]]);
-        let front_sidedef = i16::from_le_bytes([wad_file[line_i + 10], wad_file[line_i + 11]]);
-        let back_sidedef = i16::from_le_bytes([wad_file[line_i + 12], wad_file[line_i + 13]]);
-
-        current_map_linedefs.push(LineDef {
-          start_vertex: start_vertex as usize,
-          end_vertex: end_vertex as usize,
-          front_sidedef: front_sidedef as usize,
-          back_sidedef: back_sidedef as usize,
-        });
-
-        line_i += 14;
-      }
-    }
-
-    if lump.name == "SIDEDEFS" {
-      let mut sidedef_i = lump.filepos;
-      let sidedef_count = lump.size / 30; // each sidedef is 30 bytes
-
-      for _ in 0..sidedef_count {
-        let x_offset = i16::from_le_bytes([wad_file[sidedef_i], wad_file[sidedef_i + 1]]);
-        let y_offset = i16::from_le_bytes([wad_file[sidedef_i + 2], wad_file[sidedef_i + 3]]);
-
-        let name_of_upper_texture: String = format!(
-          "{}{}{}{}{}{}{}{}",
-          wad_file[sidedef_i + 4] as char,
-          wad_file[sidedef_i + 5] as char,
-          wad_file[sidedef_i + 6] as char,
-          wad_file[sidedef_i + 7] as char,
-          wad_file[sidedef_i + 8] as char,
-          wad_file[sidedef_i + 9] as char,
-          wad_file[sidedef_i + 10] as char,
-          wad_file[sidedef_i + 11] as char,
-        );
-
-        let name_of_lower_texture: String = format!(
-          "{}{}{}{}{}{}{}{}",
-          wad_file[sidedef_i + 12] as char,
-          wad_file[sidedef_i + 13] as char,
-          wad_file[sidedef_i + 14] as char,
-          wad_file[sidedef_i + 15] as char,
-          wad_file[sidedef_i + 16] as char,
-          wad_file[sidedef_i + 17] as char,
-          wad_file[sidedef_i + 18] as char,
-          wad_file[sidedef_i + 19] as char,
-        );
-
-        let name_of_middle_texture: String = format!(
-          "{}{}{}{}{}{}{}{}",
-          wad_file[sidedef_i + 20] as char,
-          wad_file[sidedef_i + 21] as char,
-          wad_file[sidedef_i + 22] as char,
-          wad_file[sidedef_i + 23] as char,
-          wad_file[sidedef_i + 24] as char,
-          wad_file[sidedef_i + 25] as char,
-          wad_file[sidedef_i + 26] as char,
-          wad_file[sidedef_i + 27] as char,
-        );
-
-        let sector_facing =
-          i16::from_le_bytes([wad_file[sidedef_i + 28], wad_file[sidedef_i + 29]]) as usize;
-
-        current_map_sidedefs.push(SideDef {
-          x_offset: x_offset,
-          y_offset: y_offset,
-          name_of_upper_texture: name_of_upper_texture,
-          name_of_lower_texture: name_of_lower_texture,
-          name_of_middle_texture: name_of_middle_texture,
-          sector_facing: sector_facing,
-        });
-
-        sidedef_i += 30;
-      }
-    }
-
-    if lump.name == "SECTORS\0" {
-      let mut sector_i = lump.filepos;
-      let sector_count = lump.size / 26; // each sector is 26 bytes
-
-      for _ in 0..sector_count {
-        let floor_height = i16::from_le_bytes([wad_file[sector_i], wad_file[sector_i + 1]]);
-        let ceiling_height = i16::from_le_bytes([wad_file[sector_i + 2], wad_file[sector_i + 3]]);
-
-        let name_of_floor_texture: String = format!(
-          "{}{}{}{}{}{}{}{}",
-          wad_file[sector_i + 4] as char,
-          wad_file[sector_i + 5] as char,
-          wad_file[sector_i + 6] as char,
-          wad_file[sector_i + 7] as char,
-          wad_file[sector_i + 8] as char,
-          wad_file[sector_i + 9] as char,
-          wad_file[sector_i + 10] as char,
-          wad_file[sector_i + 11] as char,
-        );
-
-        let name_of_ceiling_texture: String = format!(
-          "{}{}{}{}{}{}{}{}",
-          wad_file[sector_i + 12] as char,
-          wad_file[sector_i + 13] as char,
-          wad_file[sector_i + 14] as char,
-          wad_file[sector_i + 15] as char,
-          wad_file[sector_i + 16] as char,
-          wad_file[sector_i + 17] as char,
-          wad_file[sector_i + 18] as char,
-          wad_file[sector_i + 19] as char,
-        );
-
-        let light_level = i16::from_le_bytes([wad_file[sector_i + 20], wad_file[sector_i + 21]]);
-        let sector_type = i16::from_le_bytes([wad_file[sector_i + 22], wad_file[sector_i + 23]]);
-        let tag_number = i16::from_le_bytes([wad_file[sector_i + 24], wad_file[sector_i + 25]]);
-
-        current_map_sectors.push(Sector {
-          floor_height: floor_height,
-          ceiling_height: ceiling_height,
-          name_of_floor_texture: name_of_floor_texture,
-          name_of_ceiling_texture: name_of_ceiling_texture,
-          light_level: light_level,
-          sector_type: sector_type,
-          tag_number: tag_number,
-        });
-
-        sector_i += 26;
-      }
-    }
-  }
-
-  maps
-}
-
-#[derive(Debug)]
-struct Lump {
-  filepos: usize,
-  size: usize,
-  name: String,
-}
-
-fn load_lumps(wad_file: &Vec<u8>) -> Vec<Lump> {
-  println!("Read WAD. File size in bytes: {}", wad_file.len());
-
-  let wad_type: String = format!(
-    "{}{}{}{}",
-    wad_file[0] as char, wad_file[1] as char, wad_file[2] as char, wad_file[3] as char
-  );
-  println!("WAD type: {}", wad_type);
-
-  let lump_num = u32::from_le_bytes([wad_file[4], wad_file[5], wad_file[6], wad_file[7]]);
-
-  let directory_offset = u32::from_le_bytes([wad_file[8], wad_file[9], wad_file[10], wad_file[11]]);
-
-  let mut current_lump_offset = directory_offset as usize;
-  let mut lumps = Vec::new();
-
-  for _ in 0..lump_num {
-    let filepos = u32::from_le_bytes([
-      wad_file[current_lump_offset],
-      wad_file[current_lump_offset + 1],
-      wad_file[current_lump_offset + 2],
-      wad_file[current_lump_offset + 3],
-    ]);
-
-    let size = u32::from_le_bytes([
-      wad_file[current_lump_offset + 4],
-      wad_file[current_lump_offset + 5],
-      wad_file[current_lump_offset + 6],
-      wad_file[current_lump_offset + 7],
-    ]);
-
-    let lump_name: String = format!(
-      "{}{}{}{}{}{}{}{}",
-      wad_file[current_lump_offset + 8] as char,
-      wad_file[current_lump_offset + 9] as char,
-      wad_file[current_lump_offset + 10] as char,
-      wad_file[current_lump_offset + 11] as char,
-      wad_file[current_lump_offset + 12] as char,
-      wad_file[current_lump_offset + 13] as char,
-      wad_file[current_lump_offset + 14] as char,
-      wad_file[current_lump_offset + 15] as char,
-    );
-
-    lumps.push(Lump {
-      filepos: filepos as usize,
-      size: size as usize,
-      name: lump_name,
-    });
-
-    current_lump_offset += 16;
-  }
-
-  // for lump in &lumps {
-  //   println!("{:?}", lump);
-  // }
-
-  lumps
 }
 
 fn render_scene(map: &Map) {
