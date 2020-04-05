@@ -15,7 +15,7 @@ pub mod maps;
 // TODO: Read this https://fasterthanli.me/blog/2020/a-half-hour-to-learn-rust/
 
 fn main() {
-  let mut f = File::open("doomu.wad").unwrap();
+  let mut f = File::open("doom.wad").unwrap();
   let mut wad_file = Vec::new();
   f.read_to_end(&mut wad_file).unwrap();
 
