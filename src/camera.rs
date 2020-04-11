@@ -1,5 +1,5 @@
 use glium::glutin;
-use glm::{look_at, rotate_y_vec3, vec3, Mat4, Vec3};
+use glm::{cross, dot, look_at, matrix_comp_mult, normalize, rotate_y_vec3, vec3, Mat4, Vec3};
 
 #[derive(Debug, Copy, Clone)]
 pub struct Camera {
@@ -11,7 +11,7 @@ impl Camera {
   pub fn new() -> Camera {
     Camera {
       position: vec3(0.0, 0.0, 0.0),
-      view_direction: vec3(0.0, 0.0, 1.0),
+      view_direction: vec3(0.0, 0.0, -1.0),
     }
   }
 
@@ -20,7 +20,8 @@ impl Camera {
   }
 
   pub fn set_view_direction(&mut self, new_direction: [f32; 3]) {
-    self.view_direction = vec3(new_direction[0], new_direction[1], new_direction[2]);
+    let new_view_direction = vec3(new_direction[0], new_direction[1], new_direction[2]);
+    self.view_direction = normalize(&new_view_direction)
   }
 
   pub fn update_camera(&mut self, key_code: glutin::event::VirtualKeyCode) {
@@ -31,13 +32,16 @@ impl Camera {
 
     match key_code {
       VirtualKeyCode::W => {
-        self.position += vec3(0.0, 0.0, MOVE_SPEED);
-      }
-      VirtualKeyCode::A => {
-        self.position += vec3(-MOVE_SPEED, 0.0, 0.0);
+        self.position -= MOVE_SPEED * normalize(&self.view_direction);
       }
       VirtualKeyCode::S => {
-        self.position += vec3(0.0, 0.0, -MOVE_SPEED);
+        self.position += MOVE_SPEED * normalize(&self.view_direction);
+      }
+      VirtualKeyCode::A => {
+        let forward = normalize(&(self.view_direction - self.position));
+        let right = cross(&forward, &vec3(0.0, 1.0, 0.0));
+
+        self.position += right * MOVE_SPEED;
       }
       VirtualKeyCode::D => {
         self.position += vec3(MOVE_SPEED, 0.0, 0.0);
@@ -50,11 +54,12 @@ impl Camera {
       }
 
       VirtualKeyCode::E => {
-        self.view_direction = rotate_y_vec3(&self.view_direction, ROTATE_SPEED);
+        // TODO: Drop normalize? Probably already done in glm lib
+        self.view_direction = normalize(&rotate_y_vec3(&self.view_direction, ROTATE_SPEED));
       }
-
       VirtualKeyCode::Q => {
-        self.view_direction = rotate_y_vec3(&self.view_direction, -ROTATE_SPEED);
+        // TODO: Drop normalize? Probably already done in glm lib
+        self.view_direction = normalize(&rotate_y_vec3(&self.view_direction, -ROTATE_SPEED));
       }
       _ => (),
     }

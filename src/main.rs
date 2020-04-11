@@ -267,7 +267,7 @@ fn render_scene(map: &Map) {
   // let mut camera_position = [first_vertex.x as f32, 700.0 as f32, (first_vertex.y - 4000) as f32];
   camera.set_position([first_vertex.x as f32, 700.0 as f32, (first_vertex.y - 4000) as f32]);
   // let mut camera_rotation = [-0.5, -0.6, 4.0];
-  camera.set_view_direction([-0.5, -0.6, 4.0]);
+  // camera.set_view_direction([-0.5, -0.6, 4.0]);
 
   let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
 
