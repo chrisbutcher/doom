@@ -27,7 +27,7 @@ fn main() {
   // for map in maps {
   //   draw_map_svg(&map);
   // }
-  map_svg::draw_map_svg(current_map);
+  // map_svg::draw_map_svg(current_map);
 
   println!("{:?}", current_map);
 
@@ -89,6 +89,7 @@ pub struct Sector {
 }
 
 use glium::glutin;
+
 fn update_camera(
   current_position: [f32; 3],
   current_rotation: [f32; 3],
@@ -152,7 +153,7 @@ fn render_scene(map: &Map) {
 
   implement_vertex!(Vertex, position, normal, tex_coords);
 
-  let mut shapes = Vec::new();
+  let mut walls = Vec::new();
 
   let bar = &map.vertexes[400];
   let first_vertex = bar.clone();
@@ -166,7 +167,7 @@ fn render_scene(map: &Map) {
     let start_vertex = &map.vertexes[start_vertex_index];
     let end_vertex = &map.vertexes[end_vertex_index];
 
-    let foo = [
+    let wall = [
       Vertex {
         position: [start_vertex.x as f32, 0.0, start_vertex.y as f32],
         normal: [0.0, 0.0, -1.0],
@@ -199,8 +200,8 @@ fn render_scene(map: &Map) {
       },
     ];
 
-    let shape2 = glium::vertex::VertexBuffer::new(&display, &foo).unwrap();
-    shapes.push(shape2);
+    let new_wall = glium::vertex::VertexBuffer::new(&display, &wall).unwrap();
+    walls.push(new_wall);
   }
 
   let image = image::load(
@@ -211,8 +212,7 @@ fn render_scene(map: &Map) {
   .to_rgba();
 
   let image_dimensions = image.dimensions();
-  let image =
-    glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
+  let image = glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
   let diffuse_texture = glium::texture::SrgbTexture2d::new(&display, image).unwrap();
 
   let image = image::load(
@@ -222,8 +222,7 @@ fn render_scene(map: &Map) {
   .unwrap()
   .to_rgba();
   let image_dimensions = image.dimensions();
-  let image =
-    glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
+  let image = glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
   let normal_map = glium::texture::Texture2d::new(&display, image).unwrap();
 
   let vertex_shader_src = r#"
@@ -293,16 +292,11 @@ fn render_scene(map: &Map) {
   "#;
 
   // let camera_position = [0.5, 0.0, -3.0];
-  let mut camera_position = [
-    first_vertex.x as f32,
-    700.0 as f32,
-    (first_vertex.y - 4000) as f32,
-  ];
+  let mut camera_position = [first_vertex.x as f32, 700.0 as f32, (first_vertex.y - 4000) as f32];
 
   let mut camera_rotation = [-0.5, -0.6, 4.0];
 
-  let program =
-    glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
+  let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
 
   event_loop.run(move |event, _, control_flow| {
     let next_frame_time = std::time::Instant::now() + std::time::Duration::from_nanos(16_666_667);
@@ -315,17 +309,14 @@ fn render_scene(map: &Map) {
           *control_flow = glutin::event_loop::ControlFlow::Exit;
           return;
         }
-        glutin::event::WindowEvent::KeyboardInput { input, .. } => {
-          match (input.virtual_keycode, input.state) {
-            (Some(keycode), ElementState::Pressed) => {
-              println!("{:?}", keycode);
-              let result = update_camera(camera_position, camera_rotation, keycode);
-              camera_position = result.0;
-              camera_rotation = result.1;
-            }
-            _ => (),
+        glutin::event::WindowEvent::KeyboardInput { input, .. } => match (input.virtual_keycode, input.state) {
+          (Some(keycode), ElementState::Pressed) => {
+            let result = update_camera(camera_position, camera_rotation, keycode);
+            camera_position = result.0;
+            camera_rotation = result.1;
           }
-        }
+          _ => (),
+        },
         _ => return,
       },
       glutin::event::Event::NewEvents(cause) => match cause {
@@ -339,6 +330,7 @@ fn render_scene(map: &Map) {
     let mut target = display.draw();
     target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);
 
+    // The root transform of the world (all walls)
     let model = [
       [1.0, 0.0, 0.0, 0.0],
       [0.0, 1.0, 0.0, 0.0],
@@ -346,6 +338,7 @@ fn render_scene(map: &Map) {
       [0.0, 0.0, 0.0, 1.0f32],
     ];
 
+    // The camera transform
     let view = view_matrix(&camera_position, &camera_rotation, &[0.0, 1.0, 0.0]);
 
     let perspective = {
@@ -377,14 +370,20 @@ fn render_scene(map: &Map) {
       ..Default::default()
     };
 
-    for shape in &shapes {
+    for wall in &walls {
       target
         .draw(
-          shape,
+          wall,
           glium::index::NoIndices(glium::index::PrimitiveType::TriangleStrip),
           &program,
-          &uniform! { model: model, view: view, perspective: perspective,
-          u_light: light, diffuse_tex: &diffuse_texture, normal_tex: &normal_map },
+          &uniform! {
+            model: model,
+            view: view,
+            perspective: perspective,
+            u_light: light,
+            diffuse_tex: &diffuse_texture,
+            normal_tex: &normal_map
+          },
           &params,
         )
         .unwrap();
