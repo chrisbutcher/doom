@@ -4,10 +4,13 @@ extern crate image;
 
 extern crate regex;
 
+extern crate nalgebra_glm as glm;
+
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Cursor;
 
+pub mod camera;
 pub mod lumps;
 pub mod map_svg;
 pub mod maps;
@@ -90,50 +93,6 @@ pub struct Sector {
 
 use glium::glutin;
 
-fn update_camera(
-  current_position: [f32; 3],
-  current_rotation: [f32; 3],
-  key_code: glutin::event::VirtualKeyCode,
-) -> ([f32; 3], [f32; 3]) {
-  let mut new_position = current_position;
-  let mut new_rotation = current_rotation;
-
-  use glutin::event::VirtualKeyCode;
-
-  const MOVE_SPEED: f32 = 50.0;
-  const ROTATE_SPEED: f32 = 0.1;
-
-  match key_code {
-    VirtualKeyCode::W => {
-      new_position[2] += MOVE_SPEED;
-    }
-    VirtualKeyCode::A => {
-      new_position[0] -= MOVE_SPEED;
-    }
-    VirtualKeyCode::S => {
-      new_position[2] -= MOVE_SPEED;
-    }
-    VirtualKeyCode::D => {
-      new_position[0] += MOVE_SPEED;
-    }
-    VirtualKeyCode::Up => {
-      new_position[1] += MOVE_SPEED;
-    }
-    VirtualKeyCode::Down => {
-      new_position[1] -= MOVE_SPEED;
-    }
-    VirtualKeyCode::Q => {
-      new_rotation[0] -= ROTATE_SPEED;
-    }
-    VirtualKeyCode::E => {
-      new_rotation[0] += ROTATE_SPEED;
-    }
-    _ => (),
-  }
-
-  (new_position, new_rotation)
-}
-
 fn render_scene(map: &Map) {
   #[allow(unused_imports)]
   use glium::{glutin, Surface};
@@ -152,6 +111,8 @@ fn render_scene(map: &Map) {
   }
 
   implement_vertex!(Vertex, position, normal, tex_coords);
+
+  let mut camera = camera::Camera::new();
 
   let mut walls = Vec::new();
 
@@ -241,10 +202,20 @@ fn render_scene(map: &Map) {
     uniform mat4 model;
 
     void main() {
+      // passes through tex_coords unaffacted
       v_tex_coords = tex_coords;
+
+      // compute modelView for easier math below
       mat4 modelview = view * model;
-      v_normal = transpose(inverse(mat3(modelview))) * normal;
+
+      // corrects normals after non-uniform scaling (different scales in different axes)
+      v_normal = transpose(inverse(mat3(modelview))) * normal; 
+
+      // all of the matrix multiplies. vertex position is mulitplied to model * world (camera) position.
+      // then multiplied by camera perspective (for FOV, clipping, znear/zfar) etc.
       gl_Position = perspective * modelview * vec4(position, 1.0);
+
+      // pass v_position to fragment shader
       v_position = gl_Position.xyz / gl_Position.w;
     }
   "#;
@@ -264,6 +235,7 @@ fn render_scene(map: &Map) {
     
     const vec3 specular_color = vec3(1.0, 1.0, 1.0);
     
+    // original source? http://www.thetenthplanet.de/archives/1180
     mat3 cotangent_frame(vec3 normal, vec3 pos, vec2 uv) {
       vec3 dp1 = dFdx(pos);
       vec3 dp2 = dFdy(pos);
@@ -292,9 +264,10 @@ fn render_scene(map: &Map) {
   "#;
 
   // let camera_position = [0.5, 0.0, -3.0];
-  let mut camera_position = [first_vertex.x as f32, 700.0 as f32, (first_vertex.y - 4000) as f32];
-
-  let mut camera_rotation = [-0.5, -0.6, 4.0];
+  // let mut camera_position = [first_vertex.x as f32, 700.0 as f32, (first_vertex.y - 4000) as f32];
+  camera.set_position([first_vertex.x as f32, 700.0 as f32, (first_vertex.y - 4000) as f32]);
+  // let mut camera_rotation = [-0.5, -0.6, 4.0];
+  camera.set_view_direction([-0.5, -0.6, 4.0]);
 
   let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
 
@@ -311,9 +284,10 @@ fn render_scene(map: &Map) {
         }
         glutin::event::WindowEvent::KeyboardInput { input, .. } => match (input.virtual_keycode, input.state) {
           (Some(keycode), ElementState::Pressed) => {
-            let result = update_camera(camera_position, camera_rotation, keycode);
-            camera_position = result.0;
-            camera_rotation = result.1;
+            camera.update_camera(keycode)
+            // let result = update_camera(camera_position, camera_rotation, keycode);
+            // camera_position = result.0;
+            // camera_rotation = result.1;
           }
           _ => (),
         },
@@ -338,8 +312,12 @@ fn render_scene(map: &Map) {
       [0.0, 0.0, 0.0, 1.0f32],
     ];
 
+    // TODO: Need camera to output a Mat4 here, which will be the view matrix
+
     // The camera transform
-    let view = view_matrix(&camera_position, &camera_rotation, &[0.0, 1.0, 0.0]);
+    // let view = view_matrix(&camera_position, &camera_rotation, &[0.0, 1.0, 0.0]);
+    let view = camera.get_world_to_view_matrix();
+    let view: [[f32; 4]; 4] = view.into();
 
     let perspective = {
       let (width, height) = target.get_dimensions();
@@ -347,8 +325,9 @@ fn render_scene(map: &Map) {
 
       let fov: f32 = 3.141592 / 3.0;
       let zfar = 100_000.0;
-      let znear = 0.1;
+      let znear = 0.001;
 
+      // focal length?
       let f = 1.0 / (fov / 2.0).tan();
 
       [
@@ -390,44 +369,4 @@ fn render_scene(map: &Map) {
     }
     target.finish().unwrap();
   });
-}
-
-fn view_matrix(position: &[f32; 3], direction: &[f32; 3], up: &[f32; 3]) -> [[f32; 4]; 4] {
-  let f = {
-    let f = direction;
-    let len = f[0] * f[0] + f[1] * f[1] + f[2] * f[2];
-    let len = len.sqrt();
-    [f[0] / len, f[1] / len, f[2] / len]
-  };
-
-  let s = [
-    up[1] * f[2] - up[2] * f[1],
-    up[2] * f[0] - up[0] * f[2],
-    up[0] * f[1] - up[1] * f[0],
-  ];
-
-  let s_norm = {
-    let len = s[0] * s[0] + s[1] * s[1] + s[2] * s[2];
-    let len = len.sqrt();
-    [s[0] / len, s[1] / len, s[2] / len]
-  };
-
-  let u = [
-    f[1] * s_norm[2] - f[2] * s_norm[1],
-    f[2] * s_norm[0] - f[0] * s_norm[2],
-    f[0] * s_norm[1] - f[1] * s_norm[0],
-  ];
-
-  let p = [
-    -position[0] * s_norm[0] - position[1] * s_norm[1] - position[2] * s_norm[2],
-    -position[0] * u[0] - position[1] * u[1] - position[2] * u[2],
-    -position[0] * f[0] - position[1] * f[1] - position[2] * f[2],
-  ];
-
-  [
-    [s_norm[0], u[0], f[0], 0.0],
-    [s_norm[1], u[1], f[1], 0.0],
-    [s_norm[2], u[2], f[2], 0.0],
-    [p[0], p[1], p[2], 1.0],
-  ]
 }
