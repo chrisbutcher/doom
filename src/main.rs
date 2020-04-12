@@ -115,7 +115,7 @@ fn render_scene(map: &Map) {
 
   let mut walls = Vec::new();
 
-  const WALL_HEIGHT: f32 = 50.0;
+  const WALL_HEIGHT: f32 = 1.0;
 
   for line in &map.linedefs {
     let start_vertex_index = line.start_vertex;
@@ -124,41 +124,106 @@ fn render_scene(map: &Map) {
     let start_vertex = &map.vertexes[start_vertex_index];
     let end_vertex = &map.vertexes[end_vertex_index];
 
-    let wall = [
-      Vertex {
-        position: [start_vertex.x as f32, 0.0, start_vertex.y as f32],
-        normal: [0.0, 0.0, -1.0],
-        tex_coords: [0.0, 0.0],
-      },
-      Vertex {
-        position: [end_vertex.x as f32, 0.0, end_vertex.y as f32],
-        normal: [0.0, 0.0, -1.0],
-        tex_coords: [1.0, 0.0],
-      },
-      Vertex {
-        position: [start_vertex.x as f32, WALL_HEIGHT, start_vertex.y as f32],
-        normal: [0.0, 0.0, -1.0],
-        tex_coords: [0.0, 1.0],
-      },
-      Vertex {
-        position: [end_vertex.x as f32, 0.0, end_vertex.y as f32],
-        normal: [0.0, 0.0, -1.0],
-        tex_coords: [1.0, 0.0],
-      },
-      Vertex {
-        position: [end_vertex.x as f32, WALL_HEIGHT, end_vertex.y as f32],
-        normal: [0.0, 0.0, -1.0],
-        tex_coords: [1.0, 1.0],
-      },
-      Vertex {
-        position: [start_vertex.x as f32, WALL_HEIGHT, start_vertex.y as f32],
-        normal: [0.0, 0.0, -1.0],
-        tex_coords: [0.0, 1.0],
-      },
-    ];
+    let front_side = if let Some(front_sidedef) = line.front_sidedef {
+      Some(&map.sidedefs[front_sidedef])
+    } else {
+      None
+    };
 
-    let new_wall = glium::vertex::VertexBuffer::new(&display, &wall).unwrap();
-    walls.push(new_wall);
+    let back_side = if let Some(back_sidedef) = line.back_sidedef {
+      Some(&map.sidedefs[back_sidedef])
+    } else {
+      None
+    };
+
+    let front_sector = match front_side {
+      Some(front_sidedef) => Some(&map.sectors[front_sidedef.sector_facing]),
+      None => (None),
+    };
+
+    // TODO use this
+    let back_sector = match back_side {
+      Some(back_sidedef) => Some(&map.sectors[back_sidedef.sector_facing]),
+      None => (None),
+    };
+
+    // C *------* D
+    //   | \  2 |
+    //   |  \   |
+    //   | 1 \  |
+    //   |    \ |
+    // A *------* B
+
+    match front_sector {
+      Some(front_sector) => {
+        let front_wall = [
+          Vertex {
+            // A1
+            position: [
+              start_vertex.x as f32,
+              front_sector.floor_height as f32 * WALL_HEIGHT,
+              start_vertex.y as f32,
+            ],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [0.0, 0.0],
+          },
+          Vertex {
+            // B1
+            position: [
+              end_vertex.x as f32,
+              front_sector.floor_height as f32 * WALL_HEIGHT,
+              end_vertex.y as f32,
+            ],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [1.0, 0.0],
+          },
+          Vertex {
+            // C1
+            position: [
+              start_vertex.x as f32,
+              front_sector.ceiling_height as f32 * WALL_HEIGHT,
+              start_vertex.y as f32,
+            ],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [0.0, 1.0],
+          },
+          Vertex {
+            // B2
+            position: [
+              end_vertex.x as f32,
+              front_sector.floor_height as f32 * WALL_HEIGHT,
+              end_vertex.y as f32,
+            ],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [1.0, 0.0],
+          },
+          Vertex {
+            // D2
+            position: [
+              end_vertex.x as f32,
+              front_sector.ceiling_height as f32 * WALL_HEIGHT,
+              end_vertex.y as f32,
+            ],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [1.0, 1.0],
+          },
+          Vertex {
+            // C2
+            position: [
+              start_vertex.x as f32,
+              front_sector.ceiling_height as f32 * WALL_HEIGHT,
+              start_vertex.y as f32,
+            ],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [0.0, 1.0],
+          },
+        ];
+
+        let new_front_wall = glium::vertex::VertexBuffer::new(&display, &front_wall).unwrap();
+        walls.push(new_front_wall);
+      }
+      None => (),
+    };
   }
 
   let image = image::load(
