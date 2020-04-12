@@ -57,8 +57,9 @@ pub struct Map {
   name: String,
   vertexes: Vec<MapVertex>,
   linedefs: Vec<LineDef>,
-  map_centerer: map_svg::MapCenterer,
+  sidedefs: Vec<SideDef>,
   sectors: Vec<Sector>,
+  map_centerer: map_svg::MapCenterer,
 }
 
 #[derive(Debug, Clone)]
@@ -66,15 +67,15 @@ pub struct LineDef {
   // TODO: Flags, special type, sector tag: https://doomwiki.org/wiki/Linedef
   start_vertex: usize,
   end_vertex: usize,
-  front_sidedef: usize,
-  back_sidedef: usize,
+  front_sidedef: usize, // Make these Option<usize> ... If front_sidedef or back_sidedef == std::usize::MAX,
+  back_sidedef: usize,  // they are actually -1, meaning ignore them.
 }
 
 #[derive(Debug, Clone)]
 pub struct SideDef {
   x_offset: i16,
   y_offset: i16,
-  name_of_upper_texture: String,
+  name_of_upper_texture: String, // Make these Option<String>
   name_of_lower_texture: String,
   name_of_middle_texture: String,
   sector_facing: usize,

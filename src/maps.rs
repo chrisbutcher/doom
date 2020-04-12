@@ -19,6 +19,7 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
           name: current_map_name.unwrap(),
           vertexes: current_map_vertexes.to_owned(),
           linedefs: current_map_linedefs.to_owned(),
+          sidedefs: current_map_sidedefs.to_owned(),
           map_centerer: current_map_centerer.to_owned(),
           sectors: current_map_sectors.to_owned(),
         });
@@ -60,6 +61,8 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
         let end_vertex = i16::from_le_bytes([wad_file[line_i + 2], wad_file[line_i + 3]]);
         let front_sidedef = i16::from_le_bytes([wad_file[line_i + 10], wad_file[line_i + 11]]);
         let back_sidedef = i16::from_le_bytes([wad_file[line_i + 12], wad_file[line_i + 13]]);
+
+        // NOTE: If front_sidedef or back_sidedef are std::usize::MAX, they are actually -1, meaning ignore them.
 
         current_map_linedefs.push(LineDef {
           start_vertex: start_vertex as usize,
@@ -116,8 +119,7 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
           wad_file[sidedef_i + 27] as char,
         );
 
-        let sector_facing =
-          i16::from_le_bytes([wad_file[sidedef_i + 28], wad_file[sidedef_i + 29]]) as usize;
+        let sector_facing = i16::from_le_bytes([wad_file[sidedef_i + 28], wad_file[sidedef_i + 29]]) as usize;
 
         current_map_sidedefs.push(SideDef {
           x_offset: x_offset,
