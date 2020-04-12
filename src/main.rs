@@ -115,9 +115,6 @@ fn render_scene(map: &Map) {
 
   let mut walls = Vec::new();
 
-  let bar = &map.vertexes[400];
-  let first_vertex = bar.clone();
-
   const WALL_HEIGHT: f32 = 50.0;
 
   for line in &map.linedefs {
@@ -262,10 +259,7 @@ fn render_scene(map: &Map) {
     }
   "#;
 
-  let mut camera = camera::Camera::new(
-    [first_vertex.x as f32, 700.0 as f32, (first_vertex.y - 4000) as f32],
-    -90.0,
-  );
+  let mut camera = camera::Camera::new([860.4145, 250.0, -3634.698], -34.0);
 
   let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
 

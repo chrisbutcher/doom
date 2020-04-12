@@ -66,6 +66,8 @@ impl Camera {
       }
       _ => (),
     }
+
+    // println!("pos: {:?} yaw: {}", self.position, self.yaw);
   }
 
   pub fn get_world_to_view_matrix(&self) -> Mat4 {
