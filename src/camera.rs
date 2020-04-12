@@ -1,15 +1,16 @@
 use glium::glutin;
-use glm::{cross, dot, look_at, matrix_comp_mult, normalize, rotate_y_vec3, vec3, Mat4, Vec3};
+// use glm::{cross, dot, look_at, matrix_comp_mult, normalize, rotate_y_vec3, vec3, Mat4, Vec3};
+// use glm::{vec3, Vec3};
 
 // Borrowed a bit from https://learnopengl.com/code_viewer_gh.php?code=includes/learnopengl/camera.h
 
 #[derive(Debug, Copy, Clone)]
 pub struct Camera {
-  position: Vec3,
-  front: Vec3,
-  up: Vec3,
-  right: Vec3,
-  world_up: Vec3,
+  position: glm::Vec3,
+  front: glm::Vec3,
+  up: glm::Vec3,
+  right: glm::Vec3,
+  world_up: glm::Vec3,
   yaw: f32,
   pitch: f32,
 }
@@ -17,11 +18,11 @@ pub struct Camera {
 impl Camera {
   pub fn new(position: [f32; 3], yaw: f32) -> Camera {
     let mut new_camera = Camera {
-      position: vec3(position[0], position[1], position[2]),
-      front: vec3(0.0, 0.0, -1.0),
-      up: vec3(0.0, 1.0, 0.0),
-      right: vec3(1.0, 0.0, 0.0),
-      world_up: vec3(0.0, 1.0, 0.0),
+      position: glm::vec3(position[0], position[1], position[2]),
+      front: glm::vec3(0.0, 0.0, -1.0),
+      up: glm::vec3(0.0, 1.0, 0.0),
+      right: glm::vec3(1.0, 0.0, 0.0),
+      world_up: glm::vec3(0.0, 1.0, 0.0),
       yaw: yaw,
       pitch: 0.0,
     };
@@ -70,12 +71,12 @@ impl Camera {
     // println!("pos: {:?} yaw: {}", self.position, self.yaw);
   }
 
-  pub fn get_world_to_view_matrix(&self) -> Mat4 {
-    look_at(&self.position, &(self.position + self.front), &self.up)
+  pub fn get_world_to_view_matrix(&self) -> glm::Mat4 {
+    glm::look_at(&self.position, &(self.position + self.front), &self.up)
   }
 
   fn update_camera_vectors(&mut self) {
-    let mut front: Vec3 = vec3(0.0, 0.0, 0.0);
+    let mut front: glm::Vec3 = glm::vec3(0.0, 0.0, 0.0);
     front.x = self.yaw.to_radians().cos() * self.pitch.to_radians().cos();
     front.y = self.pitch.to_radians().sin();
     front.z = self.yaw.to_radians().sin() * self.pitch.to_radians().cos();

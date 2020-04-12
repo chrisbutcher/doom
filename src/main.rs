@@ -142,7 +142,7 @@ fn render_scene(map: &Map) {
     };
 
     // TODO use this
-    let back_sector = match back_side {
+    let _back_sector = match back_side {
       Some(back_sidedef) => Some(&map.sectors[back_sidedef.sector_facing]),
       None => (None),
     };
