@@ -13,6 +13,8 @@ pub struct Camera {
   world_up: glm::Vec3,
   yaw: f32,
   pitch: f32,
+  old_mouse_x: f64,
+  old_mouse_y: f64,
 }
 
 impl Camera {
@@ -25,13 +27,42 @@ impl Camera {
       world_up: glm::vec3(0.0, 1.0, 0.0),
       yaw: yaw,
       pitch: 0.0,
+      old_mouse_x: 0.0,
+      old_mouse_y: 0.0,
     };
 
     new_camera.update_camera_vectors();
     new_camera
   }
 
-  pub fn update_camera(&mut self, key_code: glutin::event::VirtualKeyCode) {
+  pub fn handle_mouse_move(&mut self, position: glium::glutin::dpi::PhysicalPosition<f64>) {
+    println!("{:?}", position);
+
+    const MOUSE_SENSITIVITY: f64 = 1.1;
+
+    let mut xoffset = position.x - self.old_mouse_x;
+    let mut yoffset = position.y - self.old_mouse_y;
+
+    self.old_mouse_x = position.x;
+    self.old_mouse_y = position.y;
+
+    xoffset *= MOUSE_SENSITIVITY;
+    yoffset *= MOUSE_SENSITIVITY;
+
+    self.yaw -= xoffset as f32;
+    self.pitch += yoffset as f32;
+
+    if self.pitch > 89.0 {
+      self.pitch = 89.0;
+    }
+    if self.pitch < -89.0 {
+      self.pitch = -89.0;
+    }
+
+    self.update_camera_vectors();
+  }
+
+  pub fn handle_keypress(&mut self, key_code: glutin::event::VirtualKeyCode) {
     use glutin::event::VirtualKeyCode;
 
     const MOVE_SPEED: f32 = 50.0;

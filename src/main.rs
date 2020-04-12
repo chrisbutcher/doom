@@ -340,9 +340,10 @@ fn render_scene(map: &Map) {
           return;
         }
         glutin::event::WindowEvent::KeyboardInput { input, .. } => match (input.virtual_keycode, input.state) {
-          (Some(keycode), ElementState::Pressed) => camera.update_camera(keycode),
+          (Some(keycode), ElementState::Pressed) => camera.handle_keypress(keycode),
           _ => (),
         },
+        glutin::event::WindowEvent::CursorMoved { position, .. } => camera.handle_mouse_move(position),
         _ => return,
       },
       glutin::event::Event::NewEvents(cause) => match cause {
