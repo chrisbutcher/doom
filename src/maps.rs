@@ -59,16 +59,16 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
       for _ in 0..line_count {
         let start_vertex = i16::from_le_bytes([wad_file[line_i], wad_file[line_i + 1]]);
         let end_vertex = i16::from_le_bytes([wad_file[line_i + 2], wad_file[line_i + 3]]);
-        let front_sidedef = i16::from_le_bytes([wad_file[line_i + 10], wad_file[line_i + 11]]);
-        let back_sidedef = i16::from_le_bytes([wad_file[line_i + 12], wad_file[line_i + 13]]);
+        let front_sidedef = option_wrap_sidedef(i16::from_le_bytes([wad_file[line_i + 10], wad_file[line_i + 11]]));
+        let back_sidedef = option_wrap_sidedef(i16::from_le_bytes([wad_file[line_i + 12], wad_file[line_i + 13]]));
 
         // NOTE: If front_sidedef or back_sidedef are std::usize::MAX, they are actually -1, meaning ignore them.
 
         current_map_linedefs.push(LineDef {
           start_vertex: start_vertex as usize,
           end_vertex: end_vertex as usize,
-          front_sidedef: front_sidedef as usize,
-          back_sidedef: back_sidedef as usize,
+          front_sidedef: front_sidedef,
+          back_sidedef: back_sidedef,
         });
 
         line_i += 14;
@@ -83,40 +83,52 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
         let x_offset = i16::from_le_bytes([wad_file[sidedef_i], wad_file[sidedef_i + 1]]);
         let y_offset = i16::from_le_bytes([wad_file[sidedef_i + 2], wad_file[sidedef_i + 3]]);
 
-        let name_of_upper_texture: String = format!(
-          "{}{}{}{}{}{}{}{}",
-          wad_file[sidedef_i + 4] as char,
-          wad_file[sidedef_i + 5] as char,
-          wad_file[sidedef_i + 6] as char,
-          wad_file[sidedef_i + 7] as char,
-          wad_file[sidedef_i + 8] as char,
-          wad_file[sidedef_i + 9] as char,
-          wad_file[sidedef_i + 10] as char,
-          wad_file[sidedef_i + 11] as char,
+        let name_of_upper_texture = option_wrap_sidedef_texture_name(
+          format!(
+            "{}{}{}{}{}{}{}{}",
+            wad_file[sidedef_i + 4] as char,
+            wad_file[sidedef_i + 5] as char,
+            wad_file[sidedef_i + 6] as char,
+            wad_file[sidedef_i + 7] as char,
+            wad_file[sidedef_i + 8] as char,
+            wad_file[sidedef_i + 9] as char,
+            wad_file[sidedef_i + 10] as char,
+            wad_file[sidedef_i + 11] as char,
+          )
+          .trim_matches(char::from(0))
+          .to_owned(),
         );
 
-        let name_of_lower_texture: String = format!(
-          "{}{}{}{}{}{}{}{}",
-          wad_file[sidedef_i + 12] as char,
-          wad_file[sidedef_i + 13] as char,
-          wad_file[sidedef_i + 14] as char,
-          wad_file[sidedef_i + 15] as char,
-          wad_file[sidedef_i + 16] as char,
-          wad_file[sidedef_i + 17] as char,
-          wad_file[sidedef_i + 18] as char,
-          wad_file[sidedef_i + 19] as char,
+        let name_of_lower_texture = option_wrap_sidedef_texture_name(
+          format!(
+            "{}{}{}{}{}{}{}{}",
+            wad_file[sidedef_i + 12] as char,
+            wad_file[sidedef_i + 13] as char,
+            wad_file[sidedef_i + 14] as char,
+            wad_file[sidedef_i + 15] as char,
+            wad_file[sidedef_i + 16] as char,
+            wad_file[sidedef_i + 17] as char,
+            wad_file[sidedef_i + 18] as char,
+            wad_file[sidedef_i + 19] as char,
+          )
+          .trim_matches(char::from(0))
+          .to_owned(),
         );
 
-        let name_of_middle_texture: String = format!(
-          "{}{}{}{}{}{}{}{}",
-          wad_file[sidedef_i + 20] as char,
-          wad_file[sidedef_i + 21] as char,
-          wad_file[sidedef_i + 22] as char,
-          wad_file[sidedef_i + 23] as char,
-          wad_file[sidedef_i + 24] as char,
-          wad_file[sidedef_i + 25] as char,
-          wad_file[sidedef_i + 26] as char,
-          wad_file[sidedef_i + 27] as char,
+        let name_of_middle_texture = option_wrap_sidedef_texture_name(
+          format!(
+            "{}{}{}{}{}{}{}{}",
+            wad_file[sidedef_i + 20] as char,
+            wad_file[sidedef_i + 21] as char,
+            wad_file[sidedef_i + 22] as char,
+            wad_file[sidedef_i + 23] as char,
+            wad_file[sidedef_i + 24] as char,
+            wad_file[sidedef_i + 25] as char,
+            wad_file[sidedef_i + 26] as char,
+            wad_file[sidedef_i + 27] as char,
+          )
+          .trim_matches(char::from(0))
+          .to_owned(),
         );
 
         let sector_facing = i16::from_le_bytes([wad_file[sidedef_i + 28], wad_file[sidedef_i + 29]]) as usize;
@@ -124,7 +136,7 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
         current_map_sidedefs.push(SideDef {
           x_offset: x_offset,
           y_offset: y_offset,
-          name_of_upper_texture: name_of_upper_texture,
+          name_of_upper_texture: name_of_upper_texture, // TODO, sometimes return None, if texture is blank
           name_of_lower_texture: name_of_lower_texture,
           name_of_middle_texture: name_of_middle_texture,
           sector_facing: sector_facing,
@@ -186,4 +198,20 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
   }
 
   maps
+}
+
+fn option_wrap_sidedef(sidedef_index: i16) -> Option<usize> {
+  if sidedef_index == -1 {
+    Some(sidedef_index as usize)
+  } else {
+    None
+  }
+}
+
+fn option_wrap_sidedef_texture_name(texture_name: String) -> Option<String> {
+  if texture_name == "-" {
+    Some(texture_name)
+  } else {
+    None
+  }
 }

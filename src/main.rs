@@ -67,17 +67,17 @@ pub struct LineDef {
   // TODO: Flags, special type, sector tag: https://doomwiki.org/wiki/Linedef
   start_vertex: usize,
   end_vertex: usize,
-  front_sidedef: usize, // Make these Option<usize> ... If front_sidedef or back_sidedef == std::usize::MAX,
-  back_sidedef: usize,  // they are actually -1, meaning ignore them.
+  front_sidedef: Option<usize>,
+  back_sidedef: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
 pub struct SideDef {
   x_offset: i16,
   y_offset: i16,
-  name_of_upper_texture: String, // Make these Option<String>
-  name_of_lower_texture: String,
-  name_of_middle_texture: String,
+  name_of_upper_texture: Option<String>,
+  name_of_lower_texture: Option<String>,
+  name_of_middle_texture: Option<String>,
   sector_facing: usize,
 }
 
@@ -85,8 +85,8 @@ pub struct SideDef {
 pub struct Sector {
   floor_height: i16,
   ceiling_height: i16,
-  name_of_floor_texture: String,
-  name_of_ceiling_texture: String,
+  name_of_floor_texture: String,   // Make these Option<String> ?
+  name_of_ceiling_texture: String, // Make these Option<String> ?
   light_level: i16,
   sector_type: i16,
   tag_number: i16,
