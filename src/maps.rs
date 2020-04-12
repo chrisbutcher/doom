@@ -62,20 +62,6 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
         let front_sidedef = option_wrap_sidedef(i16::from_le_bytes([wad_file[line_i + 10], wad_file[line_i + 11]]));
         let back_sidedef = option_wrap_sidedef(i16::from_le_bytes([wad_file[line_i + 12], wad_file[line_i + 13]]));
 
-        // println!("{}", i16::from_le_bytes([wad_file[line_i + 10], wad_file[line_i + 11]]));
-        // println!(
-        //   "{:?}",
-        //   i16::from_le_bytes([wad_file[line_i + 10], wad_file[line_i + 11]])
-        // );
-
-        // println!("{}", i16::from_le_bytes([wad_file[line_i + 12], wad_file[line_i + 13]]));
-        // println!(
-        //   "{:?}",
-        //   i16::from_le_bytes([wad_file[line_i + 12], wad_file[line_i + 13]])
-        // );
-
-        // panic!("boom");
-
         // NOTE: If front_sidedef or back_sidedef are std::usize::MAX, they are actually -1, meaning ignore them.
 
         current_map_linedefs.push(LineDef {

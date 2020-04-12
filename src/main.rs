@@ -117,6 +117,8 @@ fn render_scene(map: &Map) {
 
   const WALL_HEIGHT: f32 = 1.0;
 
+  let mut linedef_num = 0;
+
   for line in &map.linedefs {
     let start_vertex_index = line.start_vertex;
     let end_vertex_index = line.end_vertex;
@@ -125,12 +127,14 @@ fn render_scene(map: &Map) {
     let end_vertex = &map.vertexes[end_vertex_index];
 
     let front_side = if let Some(front_sidedef) = line.front_sidedef {
+      // println!("\n\n\n\n\n");
+      // println!("front_sidedef: {:?}", &map.sidedefs[front_sidedef]);
       Some(&map.sidedefs[front_sidedef])
     } else {
       None
     };
-
     let back_side = if let Some(back_sidedef) = line.back_sidedef {
+      // println!("back_sidedef: {:?}", &map.sidedefs[back_sidedef]);
       Some(&map.sidedefs[back_sidedef])
     } else {
       None
@@ -142,7 +146,7 @@ fn render_scene(map: &Map) {
     };
 
     // TODO use this
-    let _back_sector = match back_side {
+    let back_sector = match back_side {
       Some(back_sidedef) => Some(&map.sectors[back_sidedef.sector_facing]),
       None => (None),
     };
@@ -156,6 +160,13 @@ fn render_scene(map: &Map) {
 
     match front_sector {
       Some(front_sector) => {
+        if linedef_num == 166 {
+          // panic!(
+          //   "Line {:?} - Front sector: {:?} Back sector: {:?}",
+          //   line, front_sector, back_sector
+          // );
+        }
+
         let front_wall = [
           Vertex {
             // A1
@@ -224,6 +235,80 @@ fn render_scene(map: &Map) {
       }
       None => (),
     };
+
+    // TODO: Rendering backfacing walls in opposite order. Make sense??
+    // match back_sector {
+    //   Some(back_sector) => {
+    //     let front_wall = [
+    //       Vertex {
+    //         // C2
+    //         position: [
+    //           start_vertex.x as f32,
+    //           back_sector.ceiling_height as f32 * WALL_HEIGHT,
+    //           start_vertex.y as f32,
+    //         ],
+    //         normal: [0.0, 0.0, -1.0],
+    //         tex_coords: [0.0, 1.0],
+    //       },
+    //       Vertex {
+    //         // D2
+    //         position: [
+    //           end_vertex.x as f32,
+    //           back_sector.ceiling_height as f32 * WALL_HEIGHT,
+    //           end_vertex.y as f32,
+    //         ],
+    //         normal: [0.0, 0.0, -1.0],
+    //         tex_coords: [1.0, 1.0],
+    //       },
+    //       Vertex {
+    //         // B2
+    //         position: [
+    //           end_vertex.x as f32,
+    //           back_sector.floor_height as f32 * WALL_HEIGHT,
+    //           end_vertex.y as f32,
+    //         ],
+    //         normal: [0.0, 0.0, -1.0],
+    //         tex_coords: [1.0, 0.0],
+    //       },
+    //       Vertex {
+    //         // C1
+    //         position: [
+    //           start_vertex.x as f32,
+    //           back_sector.ceiling_height as f32 * WALL_HEIGHT,
+    //           start_vertex.y as f32,
+    //         ],
+    //         normal: [0.0, 0.0, -1.0],
+    //         tex_coords: [0.0, 1.0],
+    //       },
+    //       Vertex {
+    //         // B1
+    //         position: [
+    //           end_vertex.x as f32,
+    //           back_sector.floor_height as f32 * WALL_HEIGHT,
+    //           end_vertex.y as f32,
+    //         ],
+    //         normal: [0.0, 0.0, -1.0],
+    //         tex_coords: [1.0, 0.0],
+    //       },
+    //       Vertex {
+    //         // A1
+    //         position: [
+    //           start_vertex.x as f32,
+    //           back_sector.floor_height as f32 * WALL_HEIGHT,
+    //           start_vertex.y as f32,
+    //         ],
+    //         normal: [0.0, 0.0, -1.0],
+    //         tex_coords: [0.0, 0.0],
+    //       },
+    //     ];
+
+    //     let new_front_wall = glium::vertex::VertexBuffer::new(&display, &front_wall).unwrap();
+    //     walls.push(new_front_wall);
+    //   }
+    //   None => (),
+    // };
+
+    linedef_num += 1;
   }
 
   let image = image::load(
@@ -324,7 +409,8 @@ fn render_scene(map: &Map) {
     }
   "#;
 
-  let mut camera = camera::Camera::new([860.4145, 250.0, -3634.698], -34.0);
+  // pos: Matrix { data: [3927.552, 1258.45, -2268.088] } yaw: -1043.7999, pitch: 35.100002
+  let mut camera = camera::Camera::new([3927.552, 1258.45, -2268.088], -1043.7999, 35.100002);
 
   let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
 

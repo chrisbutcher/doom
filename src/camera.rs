@@ -18,7 +18,7 @@ pub struct Camera {
 }
 
 impl Camera {
-  pub fn new(position: [f32; 3], yaw: f32) -> Camera {
+  pub fn new(position: [f32; 3], yaw: f32, pitch: f32) -> Camera {
     let mut new_camera = Camera {
       position: glm::vec3(position[0], position[1], position[2]),
       front: glm::vec3(0.0, 0.0, -1.0),
@@ -26,7 +26,7 @@ impl Camera {
       right: glm::vec3(1.0, 0.0, 0.0),
       world_up: glm::vec3(0.0, 1.0, 0.0),
       yaw: yaw,
-      pitch: 0.0,
+      pitch: pitch,
       old_mouse_x: 0.0,
       old_mouse_y: 0.0,
     };
@@ -36,8 +36,6 @@ impl Camera {
   }
 
   pub fn handle_mouse_move(&mut self, position: glium::glutin::dpi::PhysicalPosition<f64>) {
-    println!("{:?}", position);
-
     const MOUSE_SENSITIVITY: f64 = 1.1;
 
     let mut xoffset = position.x - self.old_mouse_x;
@@ -99,7 +97,7 @@ impl Camera {
       _ => (),
     }
 
-    // println!("pos: {:?} yaw: {}", self.position, self.yaw);
+    // println!("pos: {:?} yaw: {}, pitch: {}", self.position, self.yaw, self.pitch);
   }
 
   pub fn get_world_to_view_matrix(&self) -> glm::Mat4 {
