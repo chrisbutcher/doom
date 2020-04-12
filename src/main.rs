@@ -112,8 +112,6 @@ fn render_scene(map: &Map) {
 
   implement_vertex!(Vertex, position, normal, tex_coords);
 
-  let mut camera = camera::Camera::new();
-
   let mut walls = Vec::new();
 
   let bar = &map.vertexes[400];
@@ -263,11 +261,10 @@ fn render_scene(map: &Map) {
     }
   "#;
 
-  // let camera_position = [0.5, 0.0, -3.0];
-  // let mut camera_position = [first_vertex.x as f32, 700.0 as f32, (first_vertex.y - 4000) as f32];
-  camera.set_position([first_vertex.x as f32, 700.0 as f32, (first_vertex.y - 4000) as f32]);
-  // let mut camera_rotation = [-0.5, -0.6, 4.0];
-  // camera.set_view_direction([-0.5, -0.6, 4.0]);
+  let mut camera = camera::Camera::new(
+    [first_vertex.x as f32, 700.0 as f32, (first_vertex.y - 4000) as f32],
+    -90.0,
+  );
 
   let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
 
@@ -283,12 +280,7 @@ fn render_scene(map: &Map) {
           return;
         }
         glutin::event::WindowEvent::KeyboardInput { input, .. } => match (input.virtual_keycode, input.state) {
-          (Some(keycode), ElementState::Pressed) => {
-            camera.update_camera(keycode)
-            // let result = update_camera(camera_position, camera_rotation, keycode);
-            // camera_position = result.0;
-            // camera_rotation = result.1;
-          }
+          (Some(keycode), ElementState::Pressed) => camera.update_camera(keycode),
           _ => (),
         },
         _ => return,
@@ -312,10 +304,7 @@ fn render_scene(map: &Map) {
       [0.0, 0.0, 0.0, 1.0f32],
     ];
 
-    // TODO: Need camera to output a Mat4 here, which will be the view matrix
-
-    // The camera transform
-    // let view = view_matrix(&camera_position, &camera_rotation, &[0.0, 1.0, 0.0]);
+    // The camera transform (view)
     let view = camera.get_world_to_view_matrix();
     let view: [[f32; 4]; 4] = view.into();
 
