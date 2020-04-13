@@ -158,6 +158,14 @@ fn render_scene(map: &Map) {
     //   |    \ |
     // A *------* B
 
+    // TODO: Am I drawing too many triangles?
+    // TODO: Am I drawing too many triangles?
+    // TODO: Am I drawing too many triangles?
+    // https://en.wikipedia.org/wiki/Triangle_strip
+    // TODO: Am I drawing too many triangles?
+    // TODO: Am I drawing too many triangles?
+    // TODO: Am I drawing too many triangles?
+
     match front_sector {
       Some(front_sector) => {
         if linedef_num == 166 {
@@ -484,6 +492,9 @@ fn render_scene(map: &Map) {
       },
       ..Default::default()
     };
+
+    // Check Doom Builder on windows,
+    // gzdoom
 
     for wall in &walls {
       target

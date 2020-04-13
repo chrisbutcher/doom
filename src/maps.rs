@@ -133,6 +133,13 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
 
         let sector_facing = i16::from_le_bytes([wad_file[sidedef_i + 28], wad_file[sidedef_i + 29]]) as usize;
 
+        // TODO:
+        // TODO:
+        // TODO: Check how many textures a sidedef has. If one; it's a single wall texture, to be shown on the right
+        //       side of the line.
+        // TODO: If it has upper and lower, it's a portal.
+        // TODO: If it has 3. I think it's a portal with a semi-transparent texture in the middle.
+
         current_map_sidedefs.push(SideDef {
           x_offset: x_offset,
           y_offset: y_offset,
