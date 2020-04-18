@@ -135,21 +135,6 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
 
         let sector_facing = i16::from_le_bytes([wad_file[sidedef_i + 28], wad_file[sidedef_i + 29]]) as usize;
 
-        // TODO: Check how many textures a sidedef has. If one; it's a single wall texture, to be shown on the right
-        //       side of the line.
-        // TODO: If it has upper and lower, it's a portal.
-        // TODO: If it has 3... TBD, like sidedef 628 in E1M1.
-
-        // if name_of_upper_texture.is_some() && name_of_lower_texture.is_some() && name_of_middle_texture.is_some() {
-        //   println!("current_map_name: {:?}", current_map_name);
-        //   println!("sidedef_i: {:?}", sidedef_i);
-        //   println!("current_map_sidedefs.len: {:?}", current_map_sidedefs.len());
-        //   println!("name_of_upper_texture: {:?}", name_of_upper_texture);
-        //   println!("name_of_lower_texture: {:?}", name_of_lower_texture);
-        //   println!("name_of_middle_texture: {:?}", name_of_middle_texture);
-        //   panic!("sidedef has all 3 textures!");
-        // }
-
         current_map_sidedefs.push(SideDef {
           x_offset: x_offset,
           y_offset: y_offset,

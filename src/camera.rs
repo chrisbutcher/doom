@@ -1,6 +1,4 @@
 use glium::glutin;
-// use glm::{cross, dot, look_at, matrix_comp_mult, normalize, rotate_y_vec3, vec3, Mat4, Vec3};
-// use glm::{vec3, Vec3};
 
 // Borrowed a bit from https://learnopengl.com/code_viewer_gh.php?code=includes/learnopengl/camera.h
 

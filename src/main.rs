@@ -44,8 +44,6 @@ pub struct Lump {
   name: String,
 }
 
-// ORIGIN is top-left. y axis grows downward (as in, subtract to go up).
-
 #[derive(Debug, Clone)]
 pub struct MapVertex {
   x: i16,
@@ -92,7 +90,7 @@ pub struct Sector {
   tag_number: i16,
 }
 
-///////////////// OpenGL-specific structs
+// ---------- OpenGL-specific structs
 #[derive(Copy, Clone)]
 struct GLVertex {
   position: [f32; 3],
@@ -102,47 +100,53 @@ struct GLVertex {
 
 use glium::glutin;
 
-fn foo(start_vertex: &MapVertex, end_vertex: &MapVertex, floor_height: f32, ceiling_height: f32) -> [GLVertex; 6] {
-  let simple_wall = [
+fn build_wall_quad(
+  start_vertex: &MapVertex,
+  end_vertex: &MapVertex,
+  low_height: f32,
+  high_height: f32,
+) -> [GLVertex; 6] {
+  // C *------* D
+  //   | \  2 |
+  //   |  \   |
+  //   | 1 \  |
+  //   |    \ |
+  // A *------* B
+
+  // TODO: Am I drawing too many triangles?
+  // https://en.wikipedia.org/wiki/Triangle_strip
+  [
     GLVertex {
-      // A1
-      position: [start_vertex.x as f32, floor_height as f32, start_vertex.y as f32],
+      position: [start_vertex.x as f32, low_height as f32, start_vertex.y as f32],
       normal: [0.0, 0.0, -1.0],
       tex_coords: [0.0, 0.0],
     },
     GLVertex {
-      // B1
-      position: [end_vertex.x as f32, floor_height as f32, end_vertex.y as f32],
+      position: [end_vertex.x as f32, low_height as f32, end_vertex.y as f32],
       normal: [0.0, 0.0, -1.0],
       tex_coords: [1.0, 0.0],
     },
     GLVertex {
-      // C1
-      position: [start_vertex.x as f32, ceiling_height as f32, start_vertex.y as f32],
+      position: [start_vertex.x as f32, high_height as f32, start_vertex.y as f32],
       normal: [0.0, 0.0, -1.0],
       tex_coords: [0.0, 1.0],
     },
     GLVertex {
-      // B2
-      position: [end_vertex.x as f32, floor_height as f32, end_vertex.y as f32],
+      position: [end_vertex.x as f32, low_height as f32, end_vertex.y as f32],
       normal: [0.0, 0.0, -1.0],
       tex_coords: [1.0, 0.0],
     },
     GLVertex {
-      // C2
-      position: [start_vertex.x as f32, ceiling_height as f32, start_vertex.y as f32],
+      position: [start_vertex.x as f32, high_height as f32, start_vertex.y as f32],
       normal: [0.0, 0.0, -1.0],
       tex_coords: [0.0, 1.0],
     },
     GLVertex {
-      // D2
-      position: [end_vertex.x as f32, ceiling_height as f32, end_vertex.y as f32],
+      position: [end_vertex.x as f32, high_height as f32, end_vertex.y as f32],
       normal: [0.0, 0.0, -1.0],
       tex_coords: [1.0, 1.0],
     },
-  ];
-
-  simple_wall
+  ]
 }
 
 fn render_scene(map: &Map) {
@@ -159,8 +163,6 @@ fn render_scene(map: &Map) {
 
   let mut walls = Vec::new();
 
-  // const WALL_HEIGHT: f32 = 1.0;
-
   let mut linedef_num = 0;
 
   for line in &map.linedefs {
@@ -169,16 +171,6 @@ fn render_scene(map: &Map) {
 
     let start_vertex = &map.vertexes[start_vertex_index];
     let end_vertex = &map.vertexes[end_vertex_index];
-
-    // C *------* D
-    //   | \  2 |
-    //   |  \   |
-    //   | 1 \  |
-    //   |    \ |
-    // A *------* B
-
-    // TODO: Am I drawing too many triangles?
-    // https://en.wikipedia.org/wiki/Triangle_strip
 
     let mut front_sector_floor_height: f32 = -1.0;
     let mut front_sector_ceiling_height: f32 = -1.0;
@@ -213,9 +205,7 @@ fn render_scene(map: &Map) {
         && fside.name_of_upper_texture.is_none()
         && fside.name_of_lower_texture.is_none()
       {
-        // println!("Drawing the front of a simple wall!");
-
-        let new_simple_wall = foo(
+        let new_simple_wall = build_wall_quad(
           start_vertex,
           end_vertex,
           front_sector_floor_height,
@@ -226,15 +216,13 @@ fn render_scene(map: &Map) {
       }
     }
 
-    // Simple walls: front
+    // Simple walls: back
     if let Some(bside) = back_sidedef {
       if bside.name_of_middle_texture.is_some()
         && bside.name_of_upper_texture.is_none()
         && bside.name_of_lower_texture.is_none()
       {
-        // println!("Drawing the front of a simple wall!");
-
-        let new_simple_wall = foo(
+        let new_simple_wall = build_wall_quad(
           end_vertex,
           start_vertex,
           back_sector_floor_height,
@@ -251,6 +239,7 @@ fn render_scene(map: &Map) {
         && (fside.name_of_upper_texture.is_some() // NOTE some vs. none here
         || fside.name_of_lower_texture.is_some())
       {
+        /////////// UP STEP
         let low_y: f32;
         let high_y: f32;
 
@@ -262,47 +251,11 @@ fn render_scene(map: &Map) {
           high_y = front_sector_floor_height;
         }
 
-        let front_up_step = [
-          GLVertex {
-            // A1
-            position: [start_vertex.x as f32, low_y as f32, start_vertex.y as f32],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [0.0, 0.0],
-          },
-          GLVertex {
-            // B1
-            position: [end_vertex.x as f32, low_y as f32, end_vertex.y as f32],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [1.0, 0.0],
-          },
-          GLVertex {
-            // C1
-            position: [start_vertex.x as f32, high_y as f32, start_vertex.y as f32],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [0.0, 1.0],
-          },
-          GLVertex {
-            // B2
-            position: [end_vertex.x as f32, low_y as f32, end_vertex.y as f32],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [1.0, 0.0],
-          },
-          GLVertex {
-            // C2
-            position: [start_vertex.x as f32, high_y as f32, start_vertex.y as f32],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [0.0, 1.0],
-          },
-          GLVertex {
-            // D2
-            position: [end_vertex.x as f32, high_y as f32, end_vertex.y as f32],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [1.0, 1.0],
-          },
-        ];
-
-        let new_front_up_step_wall = glium::vertex::VertexBuffer::new(&display, &front_up_step).unwrap();
-        walls.push(new_front_up_step_wall);
+        if low_y != high_y {
+          let front_up_step = build_wall_quad(start_vertex, end_vertex, low_y, high_y);
+          let front_up_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_up_step).unwrap();
+          walls.push(front_up_step_vertex_buffer);
+        }
 
         /////////// DOWN STEP
         let low_y: f32;
@@ -316,47 +269,11 @@ fn render_scene(map: &Map) {
           high_y = front_sector_ceiling_height;
         }
 
-        let front_down_step = [
-          GLVertex {
-            // A1
-            position: [start_vertex.x as f32, low_y as f32, start_vertex.y as f32],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [0.0, 0.0],
-          },
-          GLVertex {
-            // B1
-            position: [end_vertex.x as f32, low_y as f32, end_vertex.y as f32],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [1.0, 0.0],
-          },
-          GLVertex {
-            // C1
-            position: [start_vertex.x as f32, high_y as f32, start_vertex.y as f32],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [0.0, 1.0],
-          },
-          GLVertex {
-            // B2
-            position: [end_vertex.x as f32, low_y as f32, end_vertex.y as f32],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [1.0, 0.0],
-          },
-          GLVertex {
-            // C2
-            position: [start_vertex.x as f32, high_y as f32, start_vertex.y as f32],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [0.0, 1.0],
-          },
-          GLVertex {
-            // D2
-            position: [end_vertex.x as f32, high_y as f32, end_vertex.y as f32],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [1.0, 1.0],
-          },
-        ];
-
-        let new_front_down_step_wall = glium::vertex::VertexBuffer::new(&display, &front_down_step).unwrap();
-        walls.push(new_front_down_step_wall);
+        if low_y != high_y {
+          let front_down_step = build_wall_quad(end_vertex, start_vertex, low_y, high_y);
+          let front_down_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_down_step).unwrap();
+          walls.push(front_down_step_vertex_buffer);
+        }
       }
     }
 
@@ -461,7 +378,6 @@ fn render_scene(map: &Map) {
     }
   "#;
 
-  // pos: Matrix { data: [3927.552, 1258.45, -2268.088] } yaw: -1043.7999, pitch: 35.100002
   let mut camera = camera::Camera::new([3927.552, 1258.45, -2268.088], -1043.7999, 35.100002);
 
   let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();

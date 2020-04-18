@@ -5,6 +5,8 @@ use svg::Document;
 
 pub use super::Map;
 
+// ORIGIN is top-left. y axis grows downward (as in, subtract to go up).
+
 #[derive(Debug, Copy, Clone)]
 pub struct MapCenterer {
   left_most_x: i16,
