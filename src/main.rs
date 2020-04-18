@@ -511,7 +511,7 @@ fn render_scene(map: &Map) {
       let (width, height) = target.get_dimensions();
       let aspect_ratio = height as f32 / width as f32;
 
-      let fov: f32 = 3.141592 / 2.0;
+      let fov: f32 = 3.141592 / 2.0; // NOTE: 90* FOV, like the original doom
       let zfar = 100_000.0;
       let znear = 0.001;
 
