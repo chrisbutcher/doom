@@ -67,8 +67,8 @@ pub struct LineDef {
   // TODO: Flags, special type, sector tag: https://doomwiki.org/wiki/Linedef
   start_vertex: usize,
   end_vertex: usize,
-  front_sidedef: Option<usize>,
-  back_sidedef: Option<usize>,
+  front_sidedef_index: Option<usize>,
+  back_sidedef_index: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -115,7 +115,7 @@ fn render_scene(map: &Map) {
 
   let mut walls = Vec::new();
 
-  const WALL_HEIGHT: f32 = 1.0;
+  // const WALL_HEIGHT: f32 = 1.0;
 
   let mut linedef_num = 0;
 
@@ -126,31 +126,6 @@ fn render_scene(map: &Map) {
     let start_vertex = &map.vertexes[start_vertex_index];
     let end_vertex = &map.vertexes[end_vertex_index];
 
-    let front_side = if let Some(front_sidedef) = line.front_sidedef {
-      // println!("\n\n\n\n\n");
-      // println!("front_sidedef: {:?}", &map.sidedefs[front_sidedef]);
-      Some(&map.sidedefs[front_sidedef])
-    } else {
-      None
-    };
-    let back_side = if let Some(back_sidedef) = line.back_sidedef {
-      // println!("back_sidedef: {:?}", &map.sidedefs[back_sidedef]);
-      Some(&map.sidedefs[back_sidedef])
-    } else {
-      None
-    };
-
-    let front_sector = match front_side {
-      Some(front_sidedef) => Some(&map.sectors[front_sidedef.sector_facing]),
-      None => (None),
-    };
-
-    // TODO use this
-    let back_sector = match back_side {
-      Some(back_sidedef) => Some(&map.sectors[back_sidedef.sector_facing]),
-      None => (None),
-    };
-
     // C *------* D
     //   | \  2 |
     //   |  \   |
@@ -159,120 +134,108 @@ fn render_scene(map: &Map) {
     // A *------* B
 
     // TODO: Am I drawing too many triangles?
-    // TODO: Am I drawing too many triangles?
-    // TODO: Am I drawing too many triangles?
     // https://en.wikipedia.org/wiki/Triangle_strip
-    // TODO: Am I drawing too many triangles?
-    // TODO: Am I drawing too many triangles?
-    // TODO: Am I drawing too many triangles?
 
-    match front_sector {
-      Some(front_sector) => {
-        if linedef_num == 166 {
-          // panic!(
-          //   "Line {:?} - Front sector: {:?} Back sector: {:?}",
-          //   line, front_sector, back_sector
-          // );
-        }
-
-        let front_wall = [
-          Vertex {
-            // A1
-            position: [
-              start_vertex.x as f32,
-              front_sector.floor_height as f32 * WALL_HEIGHT,
-              start_vertex.y as f32,
-            ],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [0.0, 0.0],
-          },
-          Vertex {
-            // B1
-            position: [
-              end_vertex.x as f32,
-              front_sector.floor_height as f32 * WALL_HEIGHT,
-              end_vertex.y as f32,
-            ],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [1.0, 0.0],
-          },
-          Vertex {
-            // C1
-            position: [
-              start_vertex.x as f32,
-              front_sector.ceiling_height as f32 * WALL_HEIGHT,
-              start_vertex.y as f32,
-            ],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [0.0, 1.0],
-          },
-          Vertex {
-            // B2
-            position: [
-              end_vertex.x as f32,
-              front_sector.floor_height as f32 * WALL_HEIGHT,
-              end_vertex.y as f32,
-            ],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [1.0, 0.0],
-          },
-          Vertex {
-            // D2
-            position: [
-              end_vertex.x as f32,
-              front_sector.ceiling_height as f32 * WALL_HEIGHT,
-              end_vertex.y as f32,
-            ],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [1.0, 1.0],
-          },
-          Vertex {
-            // C2
-            position: [
-              start_vertex.x as f32,
-              front_sector.ceiling_height as f32 * WALL_HEIGHT,
-              start_vertex.y as f32,
-            ],
-            normal: [0.0, 0.0, -1.0],
-            tex_coords: [0.0, 1.0],
-          },
-        ];
-
-        let new_front_wall = glium::vertex::VertexBuffer::new(&display, &front_wall).unwrap();
-        walls.push(new_front_wall);
-      }
-      None => (),
+    let front_sidedef = if let Some(front_sidedef_index) = line.front_sidedef_index {
+      Some(&map.sidedefs[front_sidedef_index])
+    } else {
+      None
     };
 
-    // TODO: Rendering backfacing walls in opposite order. Make sense??
-    // match back_sector {
-    //   Some(back_sector) => {
+    let back_sidedef = if let Some(back_sidedef_index) = line.back_sidedef_index {
+      Some(&map.sidedefs[back_sidedef_index])
+    } else {
+      None
+    };
+
+    let front_sector = match front_sidedef {
+      Some(front_sidedef_index) => Some(&map.sectors[front_sidedef_index.sector_facing]),
+      None => (None),
+    };
+
+    let back_sector = match back_sidedef {
+      Some(back_sidedef_index) => Some(&map.sectors[back_sidedef_index.sector_facing]),
+      None => (None),
+    };
+
+    if let Some(fside) = front_sidedef {
+      if fside.name_of_middle_texture.is_some()
+        && fside.name_of_upper_texture.is_none()
+        && fside.name_of_lower_texture.is_none()
+      {
+        println!("Drawing the front of a simple wall!");
+
+        if let Some(fsec) = front_sector {
+          let simple_front_wall = [
+            Vertex {
+              // A1
+              position: [start_vertex.x as f32, fsec.floor_height as f32, start_vertex.y as f32],
+              normal: [0.0, 0.0, -1.0],
+              tex_coords: [0.0, 0.0],
+            },
+            Vertex {
+              // B1
+              position: [end_vertex.x as f32, fsec.floor_height as f32, end_vertex.y as f32],
+              normal: [0.0, 0.0, -1.0],
+              tex_coords: [1.0, 0.0],
+            },
+            Vertex {
+              // C1
+              position: [start_vertex.x as f32, fsec.ceiling_height as f32, start_vertex.y as f32],
+              normal: [0.0, 0.0, -1.0],
+              tex_coords: [0.0, 1.0],
+            },
+            Vertex {
+              // B2
+              position: [end_vertex.x as f32, fsec.floor_height as f32, end_vertex.y as f32],
+              normal: [0.0, 0.0, -1.0],
+              tex_coords: [1.0, 0.0],
+            },
+            Vertex {
+              // D2
+              position: [end_vertex.x as f32, fsec.ceiling_height as f32, end_vertex.y as f32],
+              normal: [0.0, 0.0, -1.0],
+              tex_coords: [1.0, 1.0],
+            },
+            Vertex {
+              // C2
+              position: [start_vertex.x as f32, fsec.ceiling_height as f32, start_vertex.y as f32],
+              normal: [0.0, 0.0, -1.0],
+              tex_coords: [0.0, 1.0],
+            },
+          ];
+
+          let new_front_wall = glium::vertex::VertexBuffer::new(&display, &simple_front_wall).unwrap();
+          walls.push(new_front_wall);
+        }
+      }
+    }
+
+    // match front_sector {
+    //   Some(front_sector) => {
+    //     if linedef_num == 166 {
+    //       // panic!(
+    //       //   "Line {:?} - Front sector: {:?} Back sector: {:?}",
+    //       //   line, front_sector, back_sector
+    //       // );
+    //     }
+
     //     let front_wall = [
     //       Vertex {
-    //         // C2
+    //         // A1
     //         position: [
     //           start_vertex.x as f32,
-    //           back_sector.ceiling_height as f32 * WALL_HEIGHT,
+    //           front_sector.floor_height as f32 * WALL_HEIGHT,
     //           start_vertex.y as f32,
     //         ],
     //         normal: [0.0, 0.0, -1.0],
-    //         tex_coords: [0.0, 1.0],
+    //         tex_coords: [0.0, 0.0],
     //       },
     //       Vertex {
-    //         // D2
+    //         // B1
     //         position: [
     //           end_vertex.x as f32,
-    //           back_sector.ceiling_height as f32 * WALL_HEIGHT,
-    //           end_vertex.y as f32,
-    //         ],
-    //         normal: [0.0, 0.0, -1.0],
-    //         tex_coords: [1.0, 1.0],
-    //       },
-    //       Vertex {
-    //         // B2
-    //         position: [
-    //           end_vertex.x as f32,
-    //           back_sector.floor_height as f32 * WALL_HEIGHT,
+    //           front_sector.floor_height as f32 * WALL_HEIGHT,
     //           end_vertex.y as f32,
     //         ],
     //         normal: [0.0, 0.0, -1.0],
@@ -282,31 +245,41 @@ fn render_scene(map: &Map) {
     //         // C1
     //         position: [
     //           start_vertex.x as f32,
-    //           back_sector.ceiling_height as f32 * WALL_HEIGHT,
+    //           front_sector.ceiling_height as f32 * WALL_HEIGHT,
     //           start_vertex.y as f32,
     //         ],
     //         normal: [0.0, 0.0, -1.0],
     //         tex_coords: [0.0, 1.0],
     //       },
     //       Vertex {
-    //         // B1
+    //         // B2
     //         position: [
     //           end_vertex.x as f32,
-    //           back_sector.floor_height as f32 * WALL_HEIGHT,
+    //           front_sector.floor_height as f32 * WALL_HEIGHT,
     //           end_vertex.y as f32,
     //         ],
     //         normal: [0.0, 0.0, -1.0],
     //         tex_coords: [1.0, 0.0],
     //       },
     //       Vertex {
-    //         // A1
+    //         // D2
+    //         position: [
+    //           end_vertex.x as f32,
+    //           front_sector.ceiling_height as f32 * WALL_HEIGHT,
+    //           end_vertex.y as f32,
+    //         ],
+    //         normal: [0.0, 0.0, -1.0],
+    //         tex_coords: [1.0, 1.0],
+    //       },
+    //       Vertex {
+    //         // C2
     //         position: [
     //           start_vertex.x as f32,
-    //           back_sector.floor_height as f32 * WALL_HEIGHT,
+    //           front_sector.ceiling_height as f32 * WALL_HEIGHT,
     //           start_vertex.y as f32,
     //         ],
     //         normal: [0.0, 0.0, -1.0],
-    //         tex_coords: [0.0, 0.0],
+    //         tex_coords: [0.0, 1.0],
     //       },
     //     ];
 

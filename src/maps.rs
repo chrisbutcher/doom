@@ -59,16 +59,18 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
       for _ in 0..line_count {
         let start_vertex = i16::from_le_bytes([wad_file[line_i], wad_file[line_i + 1]]);
         let end_vertex = i16::from_le_bytes([wad_file[line_i + 2], wad_file[line_i + 3]]);
-        let front_sidedef = option_wrap_sidedef(i16::from_le_bytes([wad_file[line_i + 10], wad_file[line_i + 11]]));
-        let back_sidedef = option_wrap_sidedef(i16::from_le_bytes([wad_file[line_i + 12], wad_file[line_i + 13]]));
+        let front_sidedef_index =
+          option_wrap_sidedef(i16::from_le_bytes([wad_file[line_i + 10], wad_file[line_i + 11]]));
+        let back_sidedef_index =
+          option_wrap_sidedef(i16::from_le_bytes([wad_file[line_i + 12], wad_file[line_i + 13]]));
 
-        // NOTE: If front_sidedef or back_sidedef are std::usize::MAX, they are actually -1, meaning ignore them.
+        // NOTE: If front_sidedef_index or back_sidedef_index are std::usize::MAX, they are actually -1, meaning ignore them.
 
         current_map_linedefs.push(LineDef {
           start_vertex: start_vertex as usize,
           end_vertex: end_vertex as usize,
-          front_sidedef: front_sidedef,
-          back_sidedef: back_sidedef,
+          front_sidedef_index: front_sidedef_index,
+          back_sidedef_index: back_sidedef_index,
         });
 
         line_i += 14;
@@ -133,12 +135,20 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
 
         let sector_facing = i16::from_le_bytes([wad_file[sidedef_i + 28], wad_file[sidedef_i + 29]]) as usize;
 
-        // TODO:
-        // TODO:
         // TODO: Check how many textures a sidedef has. If one; it's a single wall texture, to be shown on the right
         //       side of the line.
         // TODO: If it has upper and lower, it's a portal.
-        // TODO: If it has 3. I think it's a portal with a semi-transparent texture in the middle.
+        // TODO: If it has 3... TBD, like sidedef 628 in E1M1.
+
+        // if name_of_upper_texture.is_some() && name_of_lower_texture.is_some() && name_of_middle_texture.is_some() {
+        //   println!("current_map_name: {:?}", current_map_name);
+        //   println!("sidedef_i: {:?}", sidedef_i);
+        //   println!("current_map_sidedefs.len: {:?}", current_map_sidedefs.len());
+        //   println!("name_of_upper_texture: {:?}", name_of_upper_texture);
+        //   println!("name_of_lower_texture: {:?}", name_of_lower_texture);
+        //   println!("name_of_middle_texture: {:?}", name_of_middle_texture);
+        //   panic!("sidedef has all 3 textures!");
+        // }
 
         current_map_sidedefs.push(SideDef {
           x_offset: x_offset,
