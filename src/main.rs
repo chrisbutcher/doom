@@ -101,10 +101,10 @@ struct GLVertex {
 use glium::glutin;
 
 fn build_wall_quad(
-  start_vertex: &MapVertex,
-  end_vertex: &MapVertex,
-  low_height: f32,
-  high_height: f32,
+  vertex_1: &MapVertex,
+  vertex_2: &MapVertex,
+  wall_height_bottom: f32,
+  wall_height_top: f32,
 ) -> [GLVertex; 6] {
   // C *------* D
   //   | \  2 |
@@ -117,32 +117,38 @@ fn build_wall_quad(
   // https://en.wikipedia.org/wiki/Triangle_strip
   [
     GLVertex {
-      position: [start_vertex.x as f32, low_height as f32, start_vertex.y as f32],
+      // A
+      position: [vertex_1.x as f32, wall_height_bottom as f32, vertex_1.y as f32],
       normal: [0.0, 0.0, -1.0],
       tex_coords: [0.0, 0.0],
     },
     GLVertex {
-      position: [end_vertex.x as f32, low_height as f32, end_vertex.y as f32],
+      // B
+      position: [vertex_2.x as f32, wall_height_bottom as f32, vertex_2.y as f32],
       normal: [0.0, 0.0, -1.0],
       tex_coords: [1.0, 0.0],
     },
     GLVertex {
-      position: [start_vertex.x as f32, high_height as f32, start_vertex.y as f32],
+      // C
+      position: [vertex_1.x as f32, wall_height_top as f32, vertex_1.y as f32],
       normal: [0.0, 0.0, -1.0],
       tex_coords: [0.0, 1.0],
     },
     GLVertex {
-      position: [end_vertex.x as f32, low_height as f32, end_vertex.y as f32],
+      // B (again)
+      position: [vertex_2.x as f32, wall_height_bottom as f32, vertex_2.y as f32],
       normal: [0.0, 0.0, -1.0],
       tex_coords: [1.0, 0.0],
     },
     GLVertex {
-      position: [start_vertex.x as f32, high_height as f32, start_vertex.y as f32],
+      // C (again)
+      position: [vertex_1.x as f32, wall_height_top as f32, vertex_1.y as f32],
       normal: [0.0, 0.0, -1.0],
       tex_coords: [0.0, 1.0],
     },
     GLVertex {
-      position: [end_vertex.x as f32, high_height as f32, end_vertex.y as f32],
+      // D
+      position: [vertex_2.x as f32, wall_height_top as f32, vertex_2.y as f32],
       normal: [0.0, 0.0, -1.0],
       tex_coords: [1.0, 1.0],
     },
