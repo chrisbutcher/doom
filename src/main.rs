@@ -77,8 +77,8 @@ pub struct SideDef {
   y_offset: i16,
   name_of_upper_texture: Option<String>,
   name_of_lower_texture: Option<String>,
-  name_of_middle_texture: Option<String>,
-  sector_facing: usize,
+  name_of_middle_texture: Option<String>, // NOTE: Most normal walls only have this on their front side
+  sector_facing: usize, // ... but some walls like the grates at the end of e1m1 have only a middle on both sides
 }
 
 #[derive(Debug, Clone)]
@@ -92,7 +92,58 @@ pub struct Sector {
   tag_number: i16,
 }
 
+///////////////// OpenGL-specific structs
+#[derive(Copy, Clone)]
+struct GLVertex {
+  position: [f32; 3],
+  normal: [f32; 3],
+  tex_coords: [f32; 2],
+}
+
 use glium::glutin;
+
+fn foo(start_vertex: &MapVertex, end_vertex: &MapVertex, floor_height: f32, ceiling_height: f32) -> [GLVertex; 6] {
+  let simple_wall = [
+    GLVertex {
+      // A1
+      position: [start_vertex.x as f32, floor_height as f32, start_vertex.y as f32],
+      normal: [0.0, 0.0, -1.0],
+      tex_coords: [0.0, 0.0],
+    },
+    GLVertex {
+      // B1
+      position: [end_vertex.x as f32, floor_height as f32, end_vertex.y as f32],
+      normal: [0.0, 0.0, -1.0],
+      tex_coords: [1.0, 0.0],
+    },
+    GLVertex {
+      // C1
+      position: [start_vertex.x as f32, ceiling_height as f32, start_vertex.y as f32],
+      normal: [0.0, 0.0, -1.0],
+      tex_coords: [0.0, 1.0],
+    },
+    GLVertex {
+      // B2
+      position: [end_vertex.x as f32, floor_height as f32, end_vertex.y as f32],
+      normal: [0.0, 0.0, -1.0],
+      tex_coords: [1.0, 0.0],
+    },
+    GLVertex {
+      // C2
+      position: [start_vertex.x as f32, ceiling_height as f32, start_vertex.y as f32],
+      normal: [0.0, 0.0, -1.0],
+      tex_coords: [0.0, 1.0],
+    },
+    GLVertex {
+      // D2
+      position: [end_vertex.x as f32, ceiling_height as f32, end_vertex.y as f32],
+      normal: [0.0, 0.0, -1.0],
+      tex_coords: [1.0, 1.0],
+    },
+  ];
+
+  simple_wall
+}
 
 fn render_scene(map: &Map) {
   #[allow(unused_imports)]
@@ -104,14 +155,7 @@ fn render_scene(map: &Map) {
   let context_builder = glutin::ContextBuilder::new().with_depth_buffer(24);
   let display = glium::Display::new(window_builder, context_builder, &event_loop).unwrap();
 
-  #[derive(Copy, Clone)]
-  struct Vertex {
-    position: [f32; 3],
-    normal: [f32; 3],
-    tex_coords: [f32; 2],
-  }
-
-  implement_vertex!(Vertex, position, normal, tex_coords);
+  implement_vertex!(GLVertex, position, normal, tex_coords);
 
   let mut walls = Vec::new();
 
@@ -136,158 +180,131 @@ fn render_scene(map: &Map) {
     // TODO: Am I drawing too many triangles?
     // https://en.wikipedia.org/wiki/Triangle_strip
 
+    let mut front_sector_floor_height: f32 = -1.0;
+    let mut front_sector_ceiling_height: f32 = -1.0;
+    let mut back_sector_floor_height: f32 = -1.0;
+    let mut back_sector_ceiling_height: f32 = -1.0;
+
     let front_sidedef = if let Some(front_sidedef_index) = line.front_sidedef_index {
-      Some(&map.sidedefs[front_sidedef_index])
+      let front_sidedef = &map.sidedefs[front_sidedef_index];
+      let front_sector = &map.sectors[front_sidedef.sector_facing];
+      front_sector_floor_height = front_sector.floor_height as f32;
+      front_sector_ceiling_height = front_sector.ceiling_height as f32;
+
+      Some(front_sidedef)
     } else {
       None
     };
 
     let back_sidedef = if let Some(back_sidedef_index) = line.back_sidedef_index {
-      Some(&map.sidedefs[back_sidedef_index])
+      let back_sidedef = &map.sidedefs[back_sidedef_index];
+      let back_sector = &map.sectors[back_sidedef.sector_facing];
+      back_sector_floor_height = back_sector.floor_height as f32;
+      back_sector_ceiling_height = back_sector.ceiling_height as f32;
+
+      Some(back_sidedef)
     } else {
       None
     };
 
-    let front_sector = match front_sidedef {
-      Some(front_sidedef_index) => Some(&map.sectors[front_sidedef_index.sector_facing]),
-      None => (None),
-    };
-
-    let back_sector = match back_sidedef {
-      Some(back_sidedef_index) => Some(&map.sectors[back_sidedef_index.sector_facing]),
-      None => (None),
-    };
-
+    // Simple walls: front
     if let Some(fside) = front_sidedef {
       if fside.name_of_middle_texture.is_some()
         && fside.name_of_upper_texture.is_none()
         && fside.name_of_lower_texture.is_none()
       {
-        println!("Drawing the front of a simple wall!");
+        // println!("Drawing the front of a simple wall!");
 
-        if let Some(fsec) = front_sector {
-          let simple_front_wall = [
-            Vertex {
-              // A1
-              position: [start_vertex.x as f32, fsec.floor_height as f32, start_vertex.y as f32],
-              normal: [0.0, 0.0, -1.0],
-              tex_coords: [0.0, 0.0],
-            },
-            Vertex {
-              // B1
-              position: [end_vertex.x as f32, fsec.floor_height as f32, end_vertex.y as f32],
-              normal: [0.0, 0.0, -1.0],
-              tex_coords: [1.0, 0.0],
-            },
-            Vertex {
-              // C1
-              position: [start_vertex.x as f32, fsec.ceiling_height as f32, start_vertex.y as f32],
-              normal: [0.0, 0.0, -1.0],
-              tex_coords: [0.0, 1.0],
-            },
-            Vertex {
-              // B2
-              position: [end_vertex.x as f32, fsec.floor_height as f32, end_vertex.y as f32],
-              normal: [0.0, 0.0, -1.0],
-              tex_coords: [1.0, 0.0],
-            },
-            Vertex {
-              // D2
-              position: [end_vertex.x as f32, fsec.ceiling_height as f32, end_vertex.y as f32],
-              normal: [0.0, 0.0, -1.0],
-              tex_coords: [1.0, 1.0],
-            },
-            Vertex {
-              // C2
-              position: [start_vertex.x as f32, fsec.ceiling_height as f32, start_vertex.y as f32],
-              normal: [0.0, 0.0, -1.0],
-              tex_coords: [0.0, 1.0],
-            },
-          ];
-
-          let new_front_wall = glium::vertex::VertexBuffer::new(&display, &simple_front_wall).unwrap();
-          walls.push(new_front_wall);
-        }
+        let new_simple_wall = foo(
+          start_vertex,
+          end_vertex,
+          front_sector_floor_height,
+          front_sector_ceiling_height,
+        );
+        let new_simple_wall_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &new_simple_wall).unwrap();
+        walls.push(new_simple_wall_vertex_buffer);
       }
     }
 
-    // match front_sector {
-    //   Some(front_sector) => {
-    //     if linedef_num == 166 {
-    //       // panic!(
-    //       //   "Line {:?} - Front sector: {:?} Back sector: {:?}",
-    //       //   line, front_sector, back_sector
-    //       // );
-    //     }
+    // Simple walls: front
+    if let Some(bside) = back_sidedef {
+      if bside.name_of_middle_texture.is_some()
+        && bside.name_of_upper_texture.is_none()
+        && bside.name_of_lower_texture.is_none()
+      {
+        // println!("Drawing the front of a simple wall!");
 
-    //     let front_wall = [
-    //       Vertex {
-    //         // A1
-    //         position: [
-    //           start_vertex.x as f32,
-    //           front_sector.floor_height as f32 * WALL_HEIGHT,
-    //           start_vertex.y as f32,
-    //         ],
-    //         normal: [0.0, 0.0, -1.0],
-    //         tex_coords: [0.0, 0.0],
-    //       },
-    //       Vertex {
-    //         // B1
-    //         position: [
-    //           end_vertex.x as f32,
-    //           front_sector.floor_height as f32 * WALL_HEIGHT,
-    //           end_vertex.y as f32,
-    //         ],
-    //         normal: [0.0, 0.0, -1.0],
-    //         tex_coords: [1.0, 0.0],
-    //       },
-    //       Vertex {
-    //         // C1
-    //         position: [
-    //           start_vertex.x as f32,
-    //           front_sector.ceiling_height as f32 * WALL_HEIGHT,
-    //           start_vertex.y as f32,
-    //         ],
-    //         normal: [0.0, 0.0, -1.0],
-    //         tex_coords: [0.0, 1.0],
-    //       },
-    //       Vertex {
-    //         // B2
-    //         position: [
-    //           end_vertex.x as f32,
-    //           front_sector.floor_height as f32 * WALL_HEIGHT,
-    //           end_vertex.y as f32,
-    //         ],
-    //         normal: [0.0, 0.0, -1.0],
-    //         tex_coords: [1.0, 0.0],
-    //       },
-    //       Vertex {
-    //         // D2
-    //         position: [
-    //           end_vertex.x as f32,
-    //           front_sector.ceiling_height as f32 * WALL_HEIGHT,
-    //           end_vertex.y as f32,
-    //         ],
-    //         normal: [0.0, 0.0, -1.0],
-    //         tex_coords: [1.0, 1.0],
-    //       },
-    //       Vertex {
-    //         // C2
-    //         position: [
-    //           start_vertex.x as f32,
-    //           front_sector.ceiling_height as f32 * WALL_HEIGHT,
-    //           start_vertex.y as f32,
-    //         ],
-    //         normal: [0.0, 0.0, -1.0],
-    //         tex_coords: [0.0, 1.0],
-    //       },
-    //     ];
+        let new_simple_wall = foo(
+          end_vertex,
+          start_vertex,
+          back_sector_floor_height,
+          back_sector_ceiling_height,
+        );
+        let new_simple_wall_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &new_simple_wall).unwrap();
+        walls.push(new_simple_wall_vertex_buffer);
+      }
+    }
 
-    //     let new_front_wall = glium::vertex::VertexBuffer::new(&display, &front_wall).unwrap();
-    //     walls.push(new_front_wall);
-    //   }
-    //   None => (),
-    // };
+    // lower walls: front
+    if let Some(fside) = front_sidedef {
+      if fside.name_of_middle_texture.is_none()
+        && (fside.name_of_upper_texture.is_some() // NOTE some vs. none here
+        || fside.name_of_lower_texture.is_some())
+      {
+        let mut low_y: f32 = -1.0;
+        let mut high_y: f32 = -1.0;
+
+        if front_sector_floor_height < back_sector_floor_height {
+          low_y = front_sector_floor_height;
+          high_y = back_sector_floor_height;
+        } else {
+          low_y = back_sector_floor_height;
+          high_y = front_sector_floor_height;
+        }
+
+        let front_step = [
+          GLVertex {
+            // A1
+            position: [start_vertex.x as f32, low_y as f32, start_vertex.y as f32],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [0.0, 0.0],
+          },
+          GLVertex {
+            // B1
+            position: [end_vertex.x as f32, low_y as f32, end_vertex.y as f32],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [1.0, 0.0],
+          },
+          GLVertex {
+            // C1
+            position: [start_vertex.x as f32, high_y as f32, start_vertex.y as f32],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [0.0, 1.0],
+          },
+          GLVertex {
+            // B2
+            position: [end_vertex.x as f32, low_y as f32, end_vertex.y as f32],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [1.0, 0.0],
+          },
+          GLVertex {
+            // C2
+            position: [start_vertex.x as f32, high_y as f32, start_vertex.y as f32],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [0.0, 1.0],
+          },
+          GLVertex {
+            // D2
+            position: [end_vertex.x as f32, high_y as f32, end_vertex.y as f32],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [1.0, 1.0],
+          },
+        ];
+
+        let new_front_wall = glium::vertex::VertexBuffer::new(&display, &front_step).unwrap();
+        walls.push(new_front_wall);
+      }
+    }
 
     linedef_num += 1;
   }
@@ -463,6 +480,7 @@ fn render_scene(map: &Map) {
         write: true,
         ..Default::default()
       },
+      // backface_culling: glium::draw_parameters::BackfaceCullingMode::CullClockwise, // TODO: turn this back on
       ..Default::default()
     };
 
