@@ -251,8 +251,8 @@ fn render_scene(map: &Map) {
         && (fside.name_of_upper_texture.is_some() // NOTE some vs. none here
         || fside.name_of_lower_texture.is_some())
       {
-        let mut low_y: f32 = -1.0;
-        let mut high_y: f32 = -1.0;
+        let low_y: f32;
+        let high_y: f32;
 
         if front_sector_floor_height < back_sector_floor_height {
           low_y = front_sector_floor_height;
@@ -262,7 +262,7 @@ fn render_scene(map: &Map) {
           high_y = front_sector_floor_height;
         }
 
-        let front_step = [
+        let front_up_step = [
           GLVertex {
             // A1
             position: [start_vertex.x as f32, low_y as f32, start_vertex.y as f32],
@@ -301,8 +301,62 @@ fn render_scene(map: &Map) {
           },
         ];
 
-        let new_front_wall = glium::vertex::VertexBuffer::new(&display, &front_step).unwrap();
-        walls.push(new_front_wall);
+        let new_front_up_step_wall = glium::vertex::VertexBuffer::new(&display, &front_up_step).unwrap();
+        walls.push(new_front_up_step_wall);
+
+        /////////// DOWN STEP
+        let low_y: f32;
+        let high_y: f32;
+
+        if front_sector_ceiling_height < back_sector_ceiling_height {
+          low_y = front_sector_ceiling_height;
+          high_y = back_sector_ceiling_height;
+        } else {
+          low_y = back_sector_ceiling_height;
+          high_y = front_sector_ceiling_height;
+        }
+
+        let front_down_step = [
+          GLVertex {
+            // A1
+            position: [start_vertex.x as f32, low_y as f32, start_vertex.y as f32],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [0.0, 0.0],
+          },
+          GLVertex {
+            // B1
+            position: [end_vertex.x as f32, low_y as f32, end_vertex.y as f32],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [1.0, 0.0],
+          },
+          GLVertex {
+            // C1
+            position: [start_vertex.x as f32, high_y as f32, start_vertex.y as f32],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [0.0, 1.0],
+          },
+          GLVertex {
+            // B2
+            position: [end_vertex.x as f32, low_y as f32, end_vertex.y as f32],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [1.0, 0.0],
+          },
+          GLVertex {
+            // C2
+            position: [start_vertex.x as f32, high_y as f32, start_vertex.y as f32],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [0.0, 1.0],
+          },
+          GLVertex {
+            // D2
+            position: [end_vertex.x as f32, high_y as f32, end_vertex.y as f32],
+            normal: [0.0, 0.0, -1.0],
+            tex_coords: [1.0, 1.0],
+          },
+        ];
+
+        let new_front_down_step_wall = glium::vertex::VertexBuffer::new(&display, &front_down_step).unwrap();
+        walls.push(new_front_down_step_wall);
       }
     }
 
@@ -457,7 +511,7 @@ fn render_scene(map: &Map) {
       let (width, height) = target.get_dimensions();
       let aspect_ratio = height as f32 / width as f32;
 
-      let fov: f32 = 3.141592 / 3.0;
+      let fov: f32 = 3.141592 / 2.0;
       let zfar = 100_000.0;
       let znear = 0.001;
 
