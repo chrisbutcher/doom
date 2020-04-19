@@ -162,7 +162,7 @@ fn render_scene(map: &Map) {
   implement_vertex!(GLVertex, position, normal, tex_coords);
 
   let mut walls = Vec::new();
-  let mut floors = Vec::new();
+  // let mut floors = Vec::new();
 
   let mut linedef_num = 0;
 
@@ -339,20 +339,18 @@ fn render_scene(map: &Map) {
 
   // TODO: Try https://github.com/nical/lyon/ to tessellate floors, ceilings
   // Or try https://docs.rs/spade/1.8.2/spade/ -- either way, need constrained DelaunayTriangulation it seems?
+  //
+  // How GzDoom seems to do it.
+  // https://github.com/coelckers/gzdoom/blob/76db26ee0be6ab74d468d11bc9de9dfde6f5ed28/src/common/thirdparty/earcut.hpp
 
   let verts_for_first_floor = vert_tuples_by_sector_id.get(&0).unwrap();
   let first_vert = verts_for_first_floor[0];
 
-  let mut builder = Path::builder();
+  // let mut builder = Path::builder();
   // TODO: Have to find inner shapes, as well as outer shapes in floor/ceiling surfaces.
   // find and build them separately using move_to, line_to.
 
   // The tessellated geometry is ready to be uploaded to the GPU.
-  println!(
-    " -- {} vertices {} indices",
-    geometry.vertices.len(),
-    geometry.indices.len()
-  );
 
   // NOTE: Naive gl fan triangulation, didn't really work well as expected.
   //
