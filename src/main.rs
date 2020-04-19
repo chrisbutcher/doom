@@ -10,10 +10,13 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::Cursor;
 
+// use lyon::geometry_builder::simple_builder;
 use lyon::math::{point, Point};
 use lyon::path::builder::*;
 use lyon::path::Path;
 use lyon::tessellation::*;
+// use lyon_tessellation::geometry_builder::simple_builder;
+use lyon::tessellation::geometry_builder::simple_builder;
 
 pub mod camera;
 pub mod lumps;
@@ -149,6 +152,83 @@ fn build_wall_quad(
   ]
 }
 
+fn build_floor(
+  verts_for_floor: &Vec<(f32, f32)>,
+  sector: &Sector,
+  display: &glium::Display,
+) -> (glium::VertexBuffer<GLVertex>, glium::IndexBuffer<u16>) {
+  // TODO: Try https://github.com/nical/lyon/ to tessellate floors, ceilings
+  // ### https://github.com/nical/lyon/tree/master/examples/wgpu ###
+  // -- main shape (drawn with paths, then 9 holes, drawn as paths within)
+  // https://nical.github.io/lyon-doc/src/lyon_extra/extra/src/rust_logo.rs.html#4-269
+  //
+  //
+  // How GzDoom seems to do it.
+  // https://github.com/coelckers/gzdoom/blob/76db26ee0be6ab74d468d11bc9de9dfde6f5ed28/src/common/thirdparty/earcut.hpp
+
+  let mut path_builder = Path::builder();
+  let mut vert_index = 0;
+
+  for floor_vert in verts_for_floor {
+    let x = floor_vert.0;
+    let z = floor_vert.1;
+
+    if vert_index == 0 {
+      path_builder.move_to(point(x, z));
+    } else {
+      path_builder.line_to(point(x, z));
+    }
+
+    vert_index += 1;
+  }
+  path_builder.close();
+  let path = path_builder.build();
+
+  let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+  let mut vertex_builder = simple_builder(&mut buffers);
+  let mut tessellator = FillTessellator::new();
+
+  let tolerance = 0.02;
+
+  // Compute the tessellation.
+  // let result = tessellator.tessellate_path(&path, &FillOptions::default(), &mut vertex_builder);
+
+  // https://docs.rs/lyon_tessellation/0.15.6/lyon_tessellation/
+  let result = tessellator.tessellate_path(
+    &path,
+    &FillOptions::tolerance(tolerance).with_fill_rule(lyon::tessellation::FillRule::NonZero),
+    &mut vertex_builder,
+  );
+
+  assert!(result.is_ok());
+
+  println!("The generated vertices are: {:?}.", &buffers.vertices[..]);
+  println!("The generated indices are: {:?}.", &buffers.indices[..]);
+
+  // panic!("boom");
+
+  let mut floor_gl_verts = Vec::new();
+
+  for floor_vert in &buffers.vertices {
+    let new_vert = GLVertex {
+      position: [floor_vert.x, sector.floor_height as f32, floor_vert.y],
+      normal: [0.0, 1.0, 0.0],
+      tex_coords: [0.0, 0.0],
+    };
+
+    floor_gl_verts.push(new_vert);
+  }
+
+  let new_floor_vbo = glium::vertex::VertexBuffer::new(display, &floor_gl_verts).unwrap();
+
+  // https://docs.rs/glium/0.27.0/glium/index/enum.PrimitiveType.html
+
+  let new_floor_ibo =
+    glium::IndexBuffer::new(display, glium::index::PrimitiveType::TriangleStrip, &buffers.indices).unwrap();
+
+  (new_floor_vbo, new_floor_ibo)
+}
+
 fn render_scene(map: &Map) {
   #[allow(unused_imports)]
   use glium::{glutin, Surface};
@@ -161,8 +241,8 @@ fn render_scene(map: &Map) {
 
   implement_vertex!(GLVertex, position, normal, tex_coords);
 
-  let mut walls = Vec::new();
-  // let mut floors = Vec::new();
+  let mut walls: Vec<glium::VertexBuffer<GLVertex>> = Vec::new();
+  let mut floors: Vec<(glium::VertexBuffer<GLVertex>, glium::IndexBuffer<u16>)> = Vec::new();
 
   let mut linedef_num = 0;
 
@@ -333,74 +413,24 @@ fn render_scene(map: &Map) {
     linedef_num += 1;
   }
 
-  // START drawing sector floors
-  // for sectors in &map.sectors {
-  // }
+  if true {
+    // TODO: Floor rendering: disabled for now.
+    let mut sector_index = 0;
+    for sector in &map.sectors {
+      // TODO: Temporary: if sector_index == 1 {
+      if sector_index == 1 {
+        // TODO: Need to pass in verts for any overlapping sectors, too, to specify where holes are.
+        if let Some(verts_for_floor) = vert_tuples_by_sector_id.get(&sector_index) {
+          let (new_floor_vbo, new_floor_ibo) = build_floor(&verts_for_floor, &sector, &display);
+          floors.push((new_floor_vbo, new_floor_ibo));
+        }
+      }
 
-  // TODO: Try https://github.com/nical/lyon/ to tessellate floors, ceilings
-  // ### https://github.com/nical/lyon/tree/master/examples/wgpu ###
-  // -- main shape (drawn with paths, then 9 holes, drawn as paths within)
-  // https://nical.github.io/lyon-doc/src/lyon_extra/extra/src/rust_logo.rs.html#4-269
-  //
-  // Or try https://docs.rs/spade/1.8.2/spade/ -- either way, need constrained DelaunayTriangulation it seems?
-  //
-  // How GzDoom seems to do it.
-  // https://github.com/coelckers/gzdoom/blob/76db26ee0be6ab74d468d11bc9de9dfde6f5ed28/src/common/thirdparty/earcut.hpp
+      sector_index += 1;
+    }
+  }
 
-  let verts_for_first_floor = vert_tuples_by_sector_id.get(&0).unwrap();
-  let first_vert = verts_for_first_floor[0];
-
-  // let mut builder = Path::builder();
-  // TODO: Have to find inner shapes, as well as outer shapes in floor/ceiling surfaces.
-  // find and build them separately using move_to, line_to.
-
-  // The tessellated geometry is ready to be uploaded to the GPU.
-
-  // NOTE: Naive gl fan triangulation, didn't really work well as expected.
-  //
-  //
-  // let mut sector_num: usize = 0;
-  // for sector in &map.sectors {
-  //   if let Some(verts_for_sector) = vert_tuples_by_sector_id.get(&sector_num) {
-  //     let mut x_sums = 0.0;
-  //     let mut y_sums = 0.0;
-
-  //     for v in verts_for_sector {
-  //       let x = v.0;
-  //       let y = v.1;
-
-  //       x_sums += x;
-  //       y_sums += y;
-  //     }
-
-  //     let num_verts = verts_for_sector.len() as f32;
-  //     let x_center = x_sums / num_verts;
-  //     let y_center = y_sums / num_verts;
-
-  //     // this floor
-
-  //     let mut floor_verts = Vec::<GLVertex>::new();
-  //     floor_verts.push(GLVertex {
-  //       position: [x_center, sector.floor_height as f32, y_center],
-  //       normal: [0.0, 1.0, 0.0],
-  //       tex_coords: [0.0, 0.0],
-  //     });
-
-  //     for v in verts_for_sector {
-  //       floor_verts.push(GLVertex {
-  //         position: [v.0, sector.floor_height as f32, v.1],
-  //         normal: [0.0, 1.0, 0.0],
-  //         tex_coords: [0.0, 0.0],
-  //       })
-  //     }
-
-  //     let floor_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &floor_verts).unwrap();
-  //     floors.push(floor_vertex_buffer);
-  //   }
-  //   sector_num += 1;
-  // }
-
-  // END drawing sector floors
+  ////////
 
   let image = image::load(
     Cursor::new(&include_bytes!("../tuto-14-diffuse.jpg")[..]),
@@ -598,24 +628,27 @@ fn render_scene(map: &Map) {
         .unwrap();
     }
 
-    // for floor in &floors {
-    //   target
-    //     .draw(
-    //       floor,
-    //       glium::index::NoIndices(glium::index::PrimitiveType::TriangleFan),
-    //       &program,
-    //       &uniform! {
-    //         model: model,
-    //         view: view,
-    //         perspective: perspective,
-    //         u_light: light,
-    //         diffuse_tex: &diffuse_texture,
-    //         normal_tex: &normal_map
-    //       },
-    //       &params,
-    //     )
-    //     .unwrap();
-    // }
+    for floor in &floors {
+      let floor_vbo = &floor.0;
+      let floor_ibo = &floor.1;
+
+      target
+        .draw(
+          floor_vbo,
+          floor_ibo,
+          &program,
+          &uniform! {
+            model: model,
+            view: view,
+            perspective: perspective,
+            u_light: light,
+            diffuse_tex: &diffuse_texture,
+            normal_tex: &normal_map
+          },
+          &params,
+        )
+        .unwrap();
+    }
 
     target.finish().unwrap();
   });
