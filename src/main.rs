@@ -338,6 +338,10 @@ fn render_scene(map: &Map) {
   // }
 
   // TODO: Try https://github.com/nical/lyon/ to tessellate floors, ceilings
+  // ### https://github.com/nical/lyon/tree/master/examples/wgpu ###
+  // -- main shape (drawn with paths, then 9 holes, drawn as paths within)
+  // https://nical.github.io/lyon-doc/src/lyon_extra/extra/src/rust_logo.rs.html#4-269
+  //
   // Or try https://docs.rs/spade/1.8.2/spade/ -- either way, need constrained DelaunayTriangulation it seems?
   //
   // How GzDoom seems to do it.
