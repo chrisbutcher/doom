@@ -94,8 +94,6 @@ impl Camera {
       }
       _ => (),
     }
-
-    // println!("pos: {:?} yaw: {}, pitch: {}", self.position, self.yaw, self.pitch);
   }
 
   pub fn get_world_to_view_matrix(&self) -> glm::Mat4 {

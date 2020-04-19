@@ -148,7 +148,7 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
       }
     }
 
-    if lump.name == "SECTORS\0" {
+    if lump.name == "SECTORS" {
       let mut sector_i = lump.filepos;
       let sector_count = lump.size / 26; // each sector is 26 bytes
 

@@ -3,11 +3,10 @@ pub use super::Lump;
 pub fn load(wad_file: &Vec<u8>) -> Vec<Lump> {
   println!("Read WAD. File size in bytes: {}", wad_file.len());
 
-  let wad_type: String = format!(
+  let _wad_type: String = format!(
     "{}{}{}{}",
     wad_file[0] as char, wad_file[1] as char, wad_file[2] as char, wad_file[3] as char
   );
-  println!("WAD type: {}", wad_type);
 
   let lump_num = u32::from_le_bytes([wad_file[4], wad_file[5], wad_file[6], wad_file[7]]);
 
@@ -41,7 +40,9 @@ pub fn load(wad_file: &Vec<u8>) -> Vec<Lump> {
       wad_file[current_lump_offset + 13] as char,
       wad_file[current_lump_offset + 14] as char,
       wad_file[current_lump_offset + 15] as char,
-    );
+    )
+    .trim_matches(char::from(0))
+    .to_owned();
 
     lumps.push(Lump {
       filepos: filepos as usize,

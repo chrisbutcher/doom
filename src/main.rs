@@ -1,14 +1,19 @@
 #[macro_use]
 extern crate glium;
 extern crate image;
-
+extern crate lyon;
+extern crate nalgebra_glm as glm;
 extern crate regex;
 
-extern crate nalgebra_glm as glm;
-
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Cursor;
+
+use lyon::math::{point, Point};
+use lyon::path::builder::*;
+use lyon::path::Path;
+use lyon::tessellation::*;
 
 pub mod camera;
 pub mod lumps;
@@ -32,7 +37,7 @@ fn main() {
   // }
   // map_svg::draw_map_svg(current_map);
 
-  println!("{:?}", current_map);
+  // println!("{:?}", current_map);
 
   render_scene(current_map);
 }
@@ -105,7 +110,7 @@ fn build_wall_quad(
   vertex_2: &MapVertex,
   wall_height_bottom: f32,
   wall_height_top: f32,
-) -> [GLVertex; 6] {
+) -> [GLVertex; 4] {
   // C *------* D
   //   | \  2 |
   //   |  \   |
@@ -113,8 +118,9 @@ fn build_wall_quad(
   //   |    \ |
   // A *------* B
 
-  // TODO: Am I drawing too many triangles?
-  // https://en.wikipedia.org/wiki/Triangle_strip
+  // https://en.wikipedia.org/wiki/Triangle_strip -- only 4 verts needed to draw two triangles.
+
+  // TODO: Calculate actual quad normals... right now, they're all negative in the z direction
   [
     GLVertex {
       // A
@@ -130,18 +136,6 @@ fn build_wall_quad(
     },
     GLVertex {
       // C
-      position: [vertex_1.x as f32, wall_height_top as f32, vertex_1.y as f32],
-      normal: [0.0, 0.0, -1.0],
-      tex_coords: [0.0, 1.0],
-    },
-    GLVertex {
-      // B (again)
-      position: [vertex_2.x as f32, wall_height_bottom as f32, vertex_2.y as f32],
-      normal: [0.0, 0.0, -1.0],
-      tex_coords: [1.0, 0.0],
-    },
-    GLVertex {
-      // C (again)
       position: [vertex_1.x as f32, wall_height_top as f32, vertex_1.y as f32],
       normal: [0.0, 0.0, -1.0],
       tex_coords: [0.0, 1.0],
@@ -168,8 +162,11 @@ fn render_scene(map: &Map) {
   implement_vertex!(GLVertex, position, normal, tex_coords);
 
   let mut walls = Vec::new();
+  let mut floors = Vec::new();
 
   let mut linedef_num = 0;
+
+  let mut vert_tuples_by_sector_id = HashMap::new();
 
   for line in &map.linedefs {
     let start_vertex_index = line.start_vertex;
@@ -188,6 +185,12 @@ fn render_scene(map: &Map) {
       let front_sector = &map.sectors[front_sidedef.sector_facing];
       front_sector_floor_height = front_sector.floor_height as f32;
       front_sector_ceiling_height = front_sector.ceiling_height as f32;
+
+      let keyed_vertex_vector = vert_tuples_by_sector_id
+        .entry(front_sidedef.sector_facing)
+        .or_insert(Vec::<(f32, f32)>::new());
+      keyed_vertex_vector.push((start_vertex.x as f32, start_vertex.y as f32));
+      keyed_vertex_vector.push((end_vertex.x as f32, end_vertex.y as f32));
 
       Some(front_sidedef)
     } else {
@@ -239,7 +242,7 @@ fn render_scene(map: &Map) {
       }
     }
 
-    // lower walls: front
+    // lower walls: front (nearly the same as ... back below)
     if let Some(fside) = front_sidedef {
       if fside.name_of_middle_texture.is_none()
         && (fside.name_of_upper_texture.is_some() // NOTE some vs. none here
@@ -276,6 +279,50 @@ fn render_scene(map: &Map) {
         }
 
         if low_y != high_y {
+          let front_down_step = build_wall_quad(start_vertex, end_vertex, low_y, high_y);
+          let front_down_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_down_step).unwrap();
+          walls.push(front_down_step_vertex_buffer);
+        }
+      }
+    }
+
+    // lower walls: back (nearly the same as ... front above)
+    if let Some(bside) = back_sidedef {
+      if bside.name_of_middle_texture.is_none()
+        && (bside.name_of_upper_texture.is_some() // NOTE some vs. none here
+        || bside.name_of_lower_texture.is_some())
+      {
+        /////////// UP STEP
+        let low_y: f32;
+        let high_y: f32;
+
+        if front_sector_floor_height < back_sector_floor_height {
+          low_y = front_sector_floor_height;
+          high_y = back_sector_floor_height;
+        } else {
+          low_y = back_sector_floor_height;
+          high_y = front_sector_floor_height;
+        }
+
+        if low_y != high_y {
+          let front_up_step = build_wall_quad(end_vertex, start_vertex, low_y, high_y);
+          let front_up_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_up_step).unwrap();
+          walls.push(front_up_step_vertex_buffer);
+        }
+
+        /////////// DOWN STEP
+        let low_y: f32;
+        let high_y: f32;
+
+        if front_sector_ceiling_height < back_sector_ceiling_height {
+          low_y = front_sector_ceiling_height;
+          high_y = back_sector_ceiling_height;
+        } else {
+          low_y = back_sector_ceiling_height;
+          high_y = front_sector_ceiling_height;
+        }
+
+        if low_y != high_y {
           let front_down_step = build_wall_quad(end_vertex, start_vertex, low_y, high_y);
           let front_down_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_down_step).unwrap();
           walls.push(front_down_step_vertex_buffer);
@@ -285,6 +332,73 @@ fn render_scene(map: &Map) {
 
     linedef_num += 1;
   }
+
+  // START drawing sector floors
+  // for sectors in &map.sectors {
+  // }
+
+  // TODO: Try https://github.com/nical/lyon/ to tessellate floors, ceilings
+  // Or try https://docs.rs/spade/1.8.2/spade/ -- either way, need constrained DelaunayTriangulation it seems?
+
+  let verts_for_first_floor = vert_tuples_by_sector_id.get(&0).unwrap();
+  let first_vert = verts_for_first_floor[0];
+
+  let mut builder = Path::builder();
+  // TODO: Have to find inner shapes, as well as outer shapes in floor/ceiling surfaces.
+  // find and build them separately using move_to, line_to.
+
+  // The tessellated geometry is ready to be uploaded to the GPU.
+  println!(
+    " -- {} vertices {} indices",
+    geometry.vertices.len(),
+    geometry.indices.len()
+  );
+
+  // NOTE: Naive gl fan triangulation, didn't really work well as expected.
+  //
+  //
+  // let mut sector_num: usize = 0;
+  // for sector in &map.sectors {
+  //   if let Some(verts_for_sector) = vert_tuples_by_sector_id.get(&sector_num) {
+  //     let mut x_sums = 0.0;
+  //     let mut y_sums = 0.0;
+
+  //     for v in verts_for_sector {
+  //       let x = v.0;
+  //       let y = v.1;
+
+  //       x_sums += x;
+  //       y_sums += y;
+  //     }
+
+  //     let num_verts = verts_for_sector.len() as f32;
+  //     let x_center = x_sums / num_verts;
+  //     let y_center = y_sums / num_verts;
+
+  //     // this floor
+
+  //     let mut floor_verts = Vec::<GLVertex>::new();
+  //     floor_verts.push(GLVertex {
+  //       position: [x_center, sector.floor_height as f32, y_center],
+  //       normal: [0.0, 1.0, 0.0],
+  //       tex_coords: [0.0, 0.0],
+  //     });
+
+  //     for v in verts_for_sector {
+  //       floor_verts.push(GLVertex {
+  //         position: [v.0, sector.floor_height as f32, v.1],
+  //         normal: [0.0, 1.0, 0.0],
+  //         tex_coords: [0.0, 0.0],
+  //       })
+  //     }
+
+  //     let floor_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &floor_verts).unwrap();
+  //     floors.push(floor_vertex_buffer);
+  //   }
+  //   sector_num += 1;
+  // }
+
+  // END drawing sector floors
 
   let image = image::load(
     Cursor::new(&include_bytes!("../tuto-14-diffuse.jpg")[..]),
@@ -481,6 +595,26 @@ fn render_scene(map: &Map) {
         )
         .unwrap();
     }
+
+    // for floor in &floors {
+    //   target
+    //     .draw(
+    //       floor,
+    //       glium::index::NoIndices(glium::index::PrimitiveType::TriangleFan),
+    //       &program,
+    //       &uniform! {
+    //         model: model,
+    //         view: view,
+    //         perspective: perspective,
+    //         u_light: light,
+    //         diffuse_tex: &diffuse_texture,
+    //         normal_tex: &normal_map
+    //       },
+    //       &params,
+    //     )
+    //     .unwrap();
+    // }
+
     target.finish().unwrap();
   });
 }
