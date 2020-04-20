@@ -54,7 +54,7 @@ pub fn load(wad_file: &Vec<u8>) -> Vec<Lump> {
   }
 
   // for lump in &lumps {
-  //   println!("{:?}", lump);
+  //   println!("{:?}", lump.name);
   // }
 
   lumps

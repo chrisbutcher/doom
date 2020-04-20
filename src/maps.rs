@@ -1,7 +1,7 @@
 pub use super::{map_svg, LineDef, Lump, Map, MapVertex, Sector, SideDef};
 use regex::Regex;
 
-pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
+pub fn load(wad_file: &Vec<u8>, lumps: &Vec<Lump>) -> Vec<Map> {
   let map_name_pattern = Regex::new("E[0-9]+M[0-9]+").unwrap();
 
   let mut maps = Vec::new();
@@ -12,7 +12,7 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
   let mut current_map_sectors = Vec::new();
   let mut current_map_centerer = map_svg::MapCenterer::new();
 
-  for lump in &lumps {
+  for lump in lumps {
     if map_name_pattern.is_match(&lump.name) {
       if current_map_name.is_some() {
         maps.push(Map {
@@ -166,7 +166,9 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
           wad_file[sector_i + 9] as char,
           wad_file[sector_i + 10] as char,
           wad_file[sector_i + 11] as char,
-        );
+        )
+        .trim_matches(char::from(0))
+        .to_owned();
 
         let name_of_ceiling_texture: String = format!(
           "{}{}{}{}{}{}{}{}",
@@ -178,7 +180,9 @@ pub fn load(wad_file: &Vec<u8>, lumps: Vec<Lump>) -> Vec<Map> {
           wad_file[sector_i + 17] as char,
           wad_file[sector_i + 18] as char,
           wad_file[sector_i + 19] as char,
-        );
+        )
+        .trim_matches(char::from(0))
+        .to_owned();
 
         let light_level = i16::from_le_bytes([wad_file[sector_i + 20], wad_file[sector_i + 21]]);
         let sector_type = i16::from_le_bytes([wad_file[sector_i + 22], wad_file[sector_i + 23]]);
