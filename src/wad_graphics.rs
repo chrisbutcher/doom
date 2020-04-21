@@ -116,7 +116,6 @@ pub fn load_patch_names(wad_file: &Vec<u8>, lumps: &Vec<Lump>) -> Vec<Patch> {
   let patches_starting_offset = pnames_lump.filepos + 4;
 
   for i in 0..num_patches {
-    println!("patches_starting_offset: {}", patches_starting_offset + (i * 8));
     let patch_name: String = format!(
       "{}{}{}{}{}{}{}{}",
       wad_file[patches_starting_offset + (i * 8)] as char,
@@ -130,8 +129,6 @@ pub fn load_patch_names(wad_file: &Vec<u8>, lumps: &Vec<Lump>) -> Vec<Patch> {
     )
     .trim_matches(char::from(0))
     .to_owned();
-
-    println!("{}", patch_name);
 
     patches.push(Patch { name: patch_name });
   }

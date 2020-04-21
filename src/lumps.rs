@@ -1,5 +1,7 @@
 pub use super::Lump;
 
+// TODO: Cache lumps, so that we don't have to do lumps.iter().find... in a bunch of places.
+
 pub fn load(wad_file: &Vec<u8>) -> Vec<Lump> {
   println!("Read WAD. File size in bytes: {}", wad_file.len());
 
@@ -56,6 +58,8 @@ pub fn load(wad_file: &Vec<u8>) -> Vec<Lump> {
   // for lump in &lumps {
   //   println!("{:?}", lump.name);
   // }
+
+  // panic!("boom");
 
   lumps
 }
