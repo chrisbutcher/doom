@@ -55,9 +55,13 @@ pub fn load(wad_file: &Vec<u8>) -> Vec<Lump> {
     current_lump_offset += 16;
   }
 
-  // for lump in &lumps {
-  //   println!("{:?}", lump.name);
-  // }
+  for lump in &lumps {
+    println!("{:?}", lump.name);
+
+    if lump.name == "COLORMAP" {
+      panic!("Need to handle this lump!: https://doomwiki.org/wiki/COLORMAP");
+    }
+  }
 
   // panic!("boom");
 

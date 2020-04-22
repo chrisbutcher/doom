@@ -1,4 +1,72 @@
-pub use super::{Lump, Patch, WallPatch, WallTexture};
+pub use super::*;
+
+pub fn load_picture_from_wad(wad_file: &Vec<u8>, lumps: &Vec<Lump>, lump_name: &str) -> Picture {
+  let picture_lump = lumps.iter().find(|&l| l.name == lump_name).unwrap();
+
+  let lump_offset = picture_lump.filepos;
+
+  let width = u16::from_le_bytes([wad_file[lump_offset], wad_file[lump_offset + 1]]);
+  let height = u16::from_le_bytes([wad_file[lump_offset + 2], wad_file[lump_offset + 3]]);
+  let leftoffset = u16::from_le_bytes([wad_file[lump_offset + 4], wad_file[lump_offset + 5]]);
+  let topoffset = u16::from_le_bytes([wad_file[lump_offset + 6], wad_file[lump_offset + 7]]);
+
+  let mut posts = Vec::new();
+
+  let mut post_column_i = 0;
+  for _ in 0..width {
+    let post_column_offset = u32::from_le_bytes([
+      wad_file[lump_offset + (post_column_i * 4) + 8],
+      wad_file[lump_offset + (post_column_i * 4) + 9],
+      wad_file[lump_offset + (post_column_i * 4) + 10],
+      wad_file[lump_offset + (post_column_i * 4) + 11],
+    ]) as usize;
+
+    let topdelta = u8::from_le_bytes([wad_file[lump_offset + post_column_offset]]);
+    let length = u8::from_le_bytes([wad_file[lump_offset + post_column_offset + 1]]);
+    let _unused = u8::from_le_bytes([wad_file[lump_offset + post_column_offset + 2]]);
+
+    let pixels_offset = lump_offset + post_column_offset;
+
+    let mut pixels = Vec::new();
+
+    let mut post_i = 0;
+    for j in 0..length {
+      let pixel = u8::from_le_bytes([wad_file[pixels_offset + post_i]]) as usize;
+
+      pixels.push(pixel);
+      post_i += 1;
+    }
+
+    posts.push(PicturePost {
+      topdelta: topdelta,
+      length: length,
+      pixels: pixels.to_owned(),
+    });
+
+    post_column_i += 1;
+  }
+
+  Picture {
+    width: width,
+    height: height,
+    leftoffset: leftoffset,
+    topoffset: topoffset,
+    posts: posts,
+  }
+}
+
+pub fn load_flat_from_wad(wad_file: &Vec<u8>, lumps: &Vec<Lump>, lump_name: &str) -> Flat {
+  let flat_lump = lumps.iter().find(|&l| l.name == lump_name).unwrap();
+
+  let mut pixels = Vec::with_capacity(4096);
+
+  for i in 0..4096 {
+    let pixel = u8::from_le_bytes([wad_file[flat_lump.filepos + i]]) as usize;
+    pixels.push(pixel);
+  }
+
+  Flat { pixels: pixels }
+}
 
 pub fn load_textures(wad_file: &Vec<u8>, lumps: &Vec<Lump>) -> Vec<WallTexture> {
   let mut wall_textures = Vec::new();

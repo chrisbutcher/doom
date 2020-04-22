@@ -27,75 +27,7 @@ pub mod wad_graphics;
 
 // TODO: Read this https://fasterthanli.me/blog/2020/a-half-hour-to-learn-rust/
 
-fn load_picture_from_wad(wad_file: &Vec<u8>, lumps: &Vec<Lump>, lump_name: &str) -> Picture {
-  let picture_lump = lumps.iter().find(|&l| l.name == lump_name).unwrap();
-
-  let lump_offset = picture_lump.filepos;
-
-  let width = u16::from_le_bytes([wad_file[lump_offset], wad_file[lump_offset + 1]]);
-  let height = u16::from_le_bytes([wad_file[lump_offset + 2], wad_file[lump_offset + 3]]);
-  let leftoffset = u16::from_le_bytes([wad_file[lump_offset + 4], wad_file[lump_offset + 5]]);
-  let topoffset = u16::from_le_bytes([wad_file[lump_offset + 6], wad_file[lump_offset + 7]]);
-
-  println!("image width: {}", width);
-  println!("image height: {}", height);
-
-  // panic!("boom");
-
-  let post_column_num = width * 8;
-
-  let mut posts = Vec::new();
-
-  let mut post_column_i = 0;
-  for _ in 0..post_column_num - 1 {
-    let post_column_offset = u32::from_le_bytes([
-      wad_file[lump_offset + (post_column_i * 4) + 8],
-      wad_file[lump_offset + (post_column_i * 4) + 9],
-      wad_file[lump_offset + (post_column_i * 4) + 10],
-      wad_file[lump_offset + (post_column_i * 4) + 11],
-    ]) as usize;
-
-    println!("width: {}", width);
-    println!("width * 8: {}", width * 8);
-    println!("height: {}", height);
-    println!("post_column_i: {}", post_column_i);
-    println!("lump_offset: {}", lump_offset);
-    println!("post_column_offset: {}", post_column_offset);
-
-    let topdelta = u8::from_le_bytes([wad_file[lump_offset + post_column_offset]]);
-    let length = u8::from_le_bytes([wad_file[lump_offset + post_column_offset + 1]]);
-    let _unused = u8::from_le_bytes([wad_file[lump_offset + post_column_offset + 2]]);
-
-    let pixels_offset = lump_offset + post_column_offset + 3;
-
-    let mut pixels = Vec::new();
-
-    let mut post_i = 0;
-    for j in 0..length {
-      let pixel = u8::from_le_bytes([wad_file[pixels_offset + post_i]]) as usize;
-
-      pixels.push(pixel);
-      post_i += 1;
-    }
-
-    posts.push(PicturePost {
-      topdelta: topdelta,
-      length: length,
-      pixels: pixels.to_owned(),
-    });
-
-    post_column_i += 1;
-  }
-
-  Picture {
-    width: width,
-    height: height,
-    leftoffset: leftoffset,
-    topoffset: topoffset,
-    posts: posts,
-  }
-}
-
+// TODO: Convert at least some of the many Vec::new to Vec::with_capacity
 fn main() {
   let mut f = File::open("doom.wad").unwrap();
   let mut wad_file = Vec::new();
@@ -106,11 +38,16 @@ fn main() {
   let textures = wad_graphics::load_textures(&wad_file, &lumps);
   let patch_names = wad_graphics::load_patch_names(&wad_file, &lumps);
 
-  let title_pic = load_picture_from_wad(&wad_file, &lumps, "TITLEPIC");
+  let doom_soldier_sprite = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "PLAYF2F8");
+  // println!("{:?}", doom_soldier_sprite);
 
-  println!("{:?}", title_pic);
+  let title_screen = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "TITLEPIC");
+  // println!("{:?}", title_screen);
 
-  panic!("boom");
+  let some_flat = wad_graphics::load_flat_from_wad(&wad_file, &lumps, "NUKAGE1");
+  // println!("{:?}", some_flat);
+  // println!("{}", some_flat.pixels.len());
+  // panic!("boom");
 
   let maps = maps::load(&wad_file, &lumps);
 
@@ -177,6 +114,11 @@ pub struct Sector {
   light_level: i16,
   sector_type: i16,
   tag_number: i16,
+}
+
+#[derive(Debug, Clone)]
+pub struct Flat {
+  pixels: Vec<usize>,
 }
 
 #[derive(Debug, Clone)]
