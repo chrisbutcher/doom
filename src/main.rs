@@ -18,11 +18,21 @@ use lyon::tessellation::*;
 // use lyon_tessellation::geometry_builder::simple_builder;
 use lyon::tessellation::geometry_builder::simple_builder;
 
+// png start
+
+// use std::fs::File;
+use std::io::BufWriter;
+use std::path::Path as std_path;
+// To use encoder.set()
+// use png::HasParameters;
+
+// png end
+
 pub mod camera;
+pub mod colors;
 pub mod lumps;
 pub mod map_svg;
 pub mod maps;
-pub mod palette;
 pub mod wad_graphics;
 
 // TODO: Read this https://fasterthanli.me/blog/2020/a-half-hour-to-learn-rust/
@@ -34,7 +44,7 @@ fn main() {
   f.read_to_end(&mut wad_file).unwrap();
 
   let lumps = lumps::load(&wad_file);
-  let palette = palette::load_palette(&wad_file, &lumps);
+  let palette = colors::load_first_palette(&wad_file, &lumps);
   let textures = wad_graphics::load_textures(&wad_file, &lumps);
   let patch_names = wad_graphics::load_patch_names(&wad_file, &lumps);
 
@@ -45,9 +55,39 @@ fn main() {
   // println!("{:?}", title_screen);
 
   let some_flat = wad_graphics::load_flat_from_wad(&wad_file, &lumps, "NUKAGE1");
-  // println!("{:?}", some_flat);
-  // println!("{}", some_flat.pixels.len());
-  // panic!("boom");
+
+  let colormap = colors::load_first_colormap(&wad_file, &lumps);
+
+  // png start
+  let path = std_path::new(r"image.png");
+  let file = File::create(path).unwrap();
+  let ref mut w = BufWriter::new(file);
+
+  let mut encoder = png::Encoder::new(w, title_screen.width as u32, title_screen.height as u32); // Width is 2 pixels and height is 1.
+  encoder.set_color(png::ColorType::RGB);
+  encoder.set_depth(png::BitDepth::Eight);
+  let mut writer = encoder.write_header().unwrap();
+
+  // let data = [255, 0, 0, 255, 0, 0, 0, 255]; // An array containing a RGBA sequence. First pixel is red and second pixel is black.
+
+  let mut data = Vec::with_capacity(title_screen.width as usize * title_screen.height as usize * 3);
+
+  for x in 0..title_screen.width {
+    // for y in 0..title_screen.height {
+    for post in &title_screen.posts {
+      for pixel_addr in &post.pixels {
+        let palette_color = &palette[*pixel_addr];
+
+        data.push(palette_color.r);
+        data.push(palette_color.g);
+        data.push(palette_color.b);
+      }
+    }
+    // }
+  }
+  writer.write_image_data(&data).unwrap(); // Save
+
+  // png end
 
   let maps = maps::load(&wad_file, &lumps);
 
@@ -114,6 +154,18 @@ pub struct Sector {
   light_level: i16,
   sector_type: i16,
   tag_number: i16,
+}
+
+#[derive(Debug, Clone)]
+pub struct Colormap {
+  palette_indexes: Vec<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PaletteColor {
+  r: u8,
+  g: u8,
+  b: u8,
 }
 
 #[derive(Debug, Clone)]
@@ -289,7 +341,7 @@ fn build_floor(
   (new_floor_vbo, new_floor_ibo)
 }
 
-fn render_scene(map: &Map, palette: &Vec<palette::PaletteColor>) {
+fn render_scene(map: &Map, palette: &Vec<colors::PaletteColor>) {
   #[allow(unused_imports)]
   use glium::{glutin, Surface};
 

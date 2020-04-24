@@ -272,6 +272,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "deflate"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7e5d2a2273fed52a7f947ee55b092c4057025d7a3e04e5ecdbd25d6c3fb1bd7"
+dependencies = [
+ "adler32",
+ "byteorder",
+]
+
+[[package]]
 name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -294,6 +304,7 @@ dependencies = [
  "image",
  "lyon",
  "nalgebra-glm",
+ "png 0.16.3",
  "regex",
  "svg",
 ]
@@ -518,7 +529,7 @@ dependencies = [
  "num-iter",
  "num-rational",
  "num-traits",
- "png",
+ "png 0.15.3",
  "scoped_threadpool",
  "tiff",
 ]
@@ -1001,7 +1012,19 @@ checksum = "ef859a23054bbfee7811284275ae522f0434a3c8e7f4b74bd4a35ae7e1c4a283"
 dependencies = [
  "bitflags",
  "crc32fast",
- "deflate",
+ "deflate 0.7.20",
+ "inflate",
+]
+
+[[package]]
+name = "png"
+version = "0.16.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c68a431ed29933a4eb5709aca9800989758c97759345860fa5db3cfced0b65d"
+dependencies = [
+ "bitflags",
+ "crc32fast",
+ "deflate 0.8.4",
  "inflate",
 ]
 
