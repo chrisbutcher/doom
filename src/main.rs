@@ -70,7 +70,8 @@ fn main() {
 
   // let data = [255, 0, 0, 255, 0, 0, 0, 255]; // An array containing a RGBA sequence. First pixel is red and second pixel is black.
 
-  let mut data = Vec::with_capacity(title_screen.width as usize * title_screen.height as usize * 3);
+  // let mut data = Vec::with_capacity(title_screen.width as usize * title_screen.height as usize * 3);
+  let mut data = Vec::new();
 
   for x in 0..title_screen.width {
     // for y in 0..title_screen.height {
