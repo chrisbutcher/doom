@@ -45,48 +45,48 @@ fn main() {
 
   let lumps = lumps::load(&wad_file);
   let palette = colors::load_first_palette(&wad_file, &lumps);
-  let textures = wad_graphics::load_textures(&wad_file, &lumps);
-  let patch_names = wad_graphics::load_patch_names(&wad_file, &lumps);
+  let _textures = wad_graphics::load_textures(&wad_file, &lumps);
+  let _patch_names = wad_graphics::load_patch_names(&wad_file, &lumps);
 
-  let doom_soldier_sprite = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "PLAYF2F8");
+  let _doom_soldier_sprite = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "PLAYF2F8");
   // println!("{:?}", doom_soldier_sprite);
 
-  let title_screen = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "TITLEPIC");
+  let title_screen = wad_graphics::load_picture_from_wad_2(&wad_file, &lumps, "TITLEPIC");
   // println!("{:?}", title_screen);
 
-  let some_flat = wad_graphics::load_flat_from_wad(&wad_file, &lumps, "NUKAGE1");
+  let _some_flat = wad_graphics::load_flat_from_wad(&wad_file, &lumps, "NUKAGE1");
 
-  let colormap = colors::load_first_colormap(&wad_file, &lumps);
+  let _colormap = colors::load_first_colormap(&wad_file, &lumps);
 
   // png start
-  let path = std_path::new(r"image.png");
-  let file = File::create(path).unwrap();
-  let ref mut w = BufWriter::new(file);
+  // let path = std_path::new(r"image.png");
+  // let file = File::create(path).unwrap();
+  // let ref mut w = BufWriter::new(file);
 
-  let mut encoder = png::Encoder::new(w, title_screen.width as u32, title_screen.height as u32); // Width is 2 pixels and height is 1.
-  encoder.set_color(png::ColorType::RGB);
-  encoder.set_depth(png::BitDepth::Eight);
-  let mut writer = encoder.write_header().unwrap();
+  // let mut encoder = png::Encoder::new(w, title_screen.width as u32, title_screen.height as u32); // Width is 2 pixels and height is 1.
+  // encoder.set_color(png::ColorType::RGB);
+  // encoder.set_depth(png::BitDepth::Eight);
+  // let mut writer = encoder.write_header().unwrap();
 
-  // let data = [255, 0, 0, 255, 0, 0, 0, 255]; // An array containing a RGBA sequence. First pixel is red and second pixel is black.
+  // // let data = [255, 0, 0, 255, 0, 0, 0, 255]; // An array containing a RGBA sequence. First pixel is red and second pixel is black.
 
-  // let mut data = Vec::with_capacity(title_screen.width as usize * title_screen.height as usize * 3);
-  let mut data = Vec::new();
+  // // let mut data = Vec::with_capacity(title_screen.width as usize * title_screen.height as usize * 3);
+  // let mut data = Vec::new();
 
-  for x in 0..title_screen.width {
-    // for y in 0..title_screen.height {
-    for post in &title_screen.posts {
-      for pixel_addr in &post.pixels {
-        let palette_color = &palette[*pixel_addr];
+  // for x in 0..title_screen.width {
+  //   // for y in 0..title_screen.height {
+  //   for post in &title_screen.posts {
+  //     for pixel_addr in &post.pixels {
+  //       let palette_color = &palette[*pixel_addr];
 
-        data.push(palette_color.r);
-        data.push(palette_color.g);
-        data.push(palette_color.b);
-      }
-    }
-    // }
-  }
-  writer.write_image_data(&data).unwrap(); // Save
+  //       data.push(palette_color.r);
+  //       data.push(palette_color.g);
+  //       data.push(palette_color.b);
+  //     }
+  //   }
+  //   // }
+  // }
+  // writer.write_image_data(&data).unwrap(); // Save
 
   // png end
 
