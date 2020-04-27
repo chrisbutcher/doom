@@ -1,6 +1,6 @@
 pub use super::*;
 
-pub fn load_picture_from_wad_2(wad_file: &Vec<u8>, lumps: &Vec<Lump>, lump_name: &str) {
+pub fn load_picture_from_wad(wad_file: &Vec<u8>, lumps: &Vec<Lump>, lump_name: &str) -> Picture {
   let picture_lump = lumps.iter().find(|&l| l.name == lump_name).unwrap();
 
   let lump_offset = picture_lump.filepos;
@@ -10,9 +10,7 @@ pub fn load_picture_from_wad_2(wad_file: &Vec<u8>, lumps: &Vec<Lump>, lump_name:
   let leftoffset = u16::from_le_bytes([wad_file[lump_offset + 4], wad_file[lump_offset + 5]]);
   let topoffset = u16::from_le_bytes([wad_file[lump_offset + 6], wad_file[lump_offset + 7]]);
 
-  // aka posts
   let mut column_array = Vec::new();
-
   for i in 0..width as usize {
     let column_offset = u32::from_le_bytes([
       wad_file[lump_offset + (i * 4) + 8],
@@ -24,128 +22,27 @@ pub fn load_picture_from_wad_2(wad_file: &Vec<u8>, lumps: &Vec<Lump>, lump_name:
     column_array.push(column_offset);
   }
 
-  for i in 0..width as usize {
-    let mut filepos_with_offset = lump_offset + &column_array[i];
-
-    let mut topdelta = 0;
-
-    while topdelta != 255 {
-      let topdelta = wad_file[filepos_with_offset];
-
-      if topdelta == 255 {
-        break;
-      }
-
-      let pixel_count = wad_file[filepos_with_offset + 1];
-      let _dummy_value = wad_file[filepos_with_offset + 2];
-
-      for j in 0..pixel_count as usize {
-        let pixel = wad_file[filepos_with_offset + 3 + j];
-      }
-    }
-
-    // println!("{}", &column_array[i]);
-  }
-
-  panic!("boom!");
-
-  // Byte = 0 - 255
-  // Word = 0 - 65535
-  // DWord = 0 - 4294967295
-
-  // dummy_value = 	Byte, those unused bytes in the file (excerpt from UDS: "..left overs from NeXT machines?..")
-  // picture_* = 	Word, the maximum width for an image in doom picture format is 256 pixels
-  // pixel_count = 	Byte, the number of pixels in a post
-  // Pixel = 	Byte, the pixel colour
-  // column_array =	array of DWord, this holds all the post start offsets for each column
-
-  // doom image = could be a file or memory stream
-
-  // Algorithm:
-  // ----------
-
-  // create a image with a pixel format of 8bit and the doom palette, set the background colour to a contrasting colour (cyan).
-
-  // read width from doom image (word)
-  // read height from doom image (word)
-  // read left from doom image (word)
-  // read top from doom image (word)
-
-  // create column_array with width number of elements
-
-  // for loop, i = 0, break on i = width - 1
-  // 	column_array[i] = read from doom image, 4 bytes
-  // end block
-
-  // for loop, i = 0, break on i = width - 1
-  // 	seek doom image to column_array[i] from beginning of doom image
-
-  // 	rowstart = 0
-
-  // 	while loop, rowstart != 255
-  // 		read rowstart from doom image, 1 byte
-
-  // 		if rowstart = 255, break from this loop
-
-  // 		read pixel_count from doom image, 1 byte
-
-  // 		read dummy_value from doom image, 1 byte
-
-  // 		for loop, j = 0, break on j = pixel_count - 1
-  // 			read Pixel from doom image, 1 byte
-
-  // 			write Pixel to image, j + rowstart = row, i = column
-  // 		end block
-
-  // 		read dummy_value from doom image, 1 byte
-  // 	end block
-  // end block
-}
-
-pub fn load_picture_from_wad(wad_file: &Vec<u8>, lumps: &Vec<Lump>, lump_name: &str) -> Picture {
-  let picture_lump = lumps.iter().find(|&l| l.name == lump_name).unwrap();
-
-  let lump_offset = picture_lump.filepos;
-
-  let width = u16::from_le_bytes([wad_file[lump_offset], wad_file[lump_offset + 1]]);
-  let height = u16::from_le_bytes([wad_file[lump_offset + 2], wad_file[lump_offset + 3]]);
-  let leftoffset = u16::from_le_bytes([wad_file[lump_offset + 4], wad_file[lump_offset + 5]]);
-  let topoffset = u16::from_le_bytes([wad_file[lump_offset + 6], wad_file[lump_offset + 7]]);
-
   let mut posts = Vec::new();
 
-  let mut post_column_i = 0;
-  for _ in 0..width {
-    let post_column_offset = u32::from_le_bytes([
-      wad_file[lump_offset + (post_column_i * 4) + 8],
-      wad_file[lump_offset + (post_column_i * 4) + 9],
-      wad_file[lump_offset + (post_column_i * 4) + 10],
-      wad_file[lump_offset + (post_column_i * 4) + 11],
-    ]) as usize;
+  for i in 0..width as usize {
+    let filepos_with_offset = lump_offset + &column_array[i];
 
-    let topdelta = u8::from_le_bytes([wad_file[lump_offset + post_column_offset]]);
-    let length = u8::from_le_bytes([wad_file[lump_offset + post_column_offset + 1]]);
-    let _unused = u8::from_le_bytes([wad_file[lump_offset + post_column_offset + 2]]);
+    let topdelta = wad_file[filepos_with_offset];
 
-    let pixels_offset = lump_offset + post_column_offset;
+    let pixel_count = wad_file[filepos_with_offset + 1];
+    let _dummy_value = wad_file[filepos_with_offset + 2];
 
     let mut pixels = Vec::new();
-
-    let mut post_i = 0;
-    for j in 0..length {
-      let pixel = u8::from_le_bytes([wad_file[pixels_offset + post_i]]) as usize;
-
-      pixels.push(pixel);
-      post_i += 1;
+    for j in 0..pixel_count as usize {
+      let pixel_palette_addr = wad_file[filepos_with_offset + 3 + j] as usize;
+      pixels.push(pixel_palette_addr);
     }
 
     posts.push(PicturePost {
       topdelta: topdelta,
-      length: length,
+      length: pixel_count,
       pixels: pixels.to_owned(),
     });
-
-    post_column_i += 1;
   }
 
   Picture {
