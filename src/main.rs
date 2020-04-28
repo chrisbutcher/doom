@@ -66,41 +66,41 @@ fn main() {
   // let mut encoder = png::Encoder::new(w, lost_soul_sprite.width as u32, lost_soul_sprite.height as u32); // Width is 2 pixels and height is 1.
 
   // TODO: Image is sideways!!
-  let mut encoder = png::Encoder::new(w, lost_soul_sprite.width as u32, lost_soul_sprite.height as u32); // Width is 2 pixels and height is 1.
+  let mut encoder = png::Encoder::new(w, lost_soul_sprite.height as u32, lost_soul_sprite.width as u32); // Width is 2 pixels and height is 1.
   encoder.set_color(png::ColorType::RGBA);
   encoder.set_depth(png::BitDepth::Eight);
   let mut writer = encoder.write_header().unwrap();
 
   let mut data = Vec::with_capacity(lost_soul_sprite.width as usize * lost_soul_sprite.height as usize * 3);
   for post in &lost_soul_sprite.posts {
+    println!("topdelta: {}", post.topdelta);
     for foo in 0..post.topdelta {
       // push clear pixels before data pixels
-
       data.push(0);
       data.push(0);
       data.push(0);
-      data.push(0xFF); // alpha
+      data.push(0); // alpha
     }
-
-    let mut remaining_pixels_after_data = lost_soul_sprite.height - post.topdelta as u16;
-
+    let mut remaining_pixels_after_data = lost_soul_sprite.height as i16 - post.topdelta as i16;
+    println!("height: {}", lost_soul_sprite.height);
+    println!("ESTIMATED remaining_pixels_after_data: {}", remaining_pixels_after_data);
     for pixel_addr in &post.pixels {
       let palette_color = &palette[*pixel_addr];
-
       data.push(palette_color.r);
       data.push(palette_color.g);
       data.push(palette_color.b);
       data.push(0xFF); // alpha
-
       remaining_pixels_after_data -= 1;
     }
-
-    for foo in 0..remaining_pixels_after_data {
-      // push clear pixels after data
-      data.push(0);
-      data.push(0);
-      data.push(0);
-      data.push(0xFF); // alpha
+    println!("ACTAUL remaining_pixels_after_data: {}", remaining_pixels_after_data);
+    if remaining_pixels_after_data > 0 {
+      for foo in 0..remaining_pixels_after_data {
+        // push clear pixels after data
+        data.push(0);
+        data.push(0);
+        data.push(0);
+        data.push(0); // alpha
+      }
     }
   }
   writer.write_image_data(&data).unwrap(); // Save
@@ -118,7 +118,7 @@ fn main() {
 
   // println!("{:?}", current_map);
 
-  render_scene(current_map, &palette);
+  // render_scene(current_map, &palette);
 }
 
 #[derive(Debug)]
@@ -204,7 +204,8 @@ pub struct Picture {
 pub struct PicturePost {
   topdelta: u8,
   length: u8,
-  pixels: Vec<usize>,
+  pixels: Vec<usize>, // TODO replace
+                      // pixel_spans: Vec<Vec<usize>>,
 }
 
 #[derive(Debug, Clone)]
