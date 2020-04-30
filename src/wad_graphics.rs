@@ -23,62 +23,51 @@ pub fn load_picture_from_wad(wad_file: &Vec<u8>, lumps: &Vec<Lump>, lump_name: &
   }
 
   let mut posts = Vec::new();
-  let mut pixels = Vec::new();
-  let mut topdelta = 0;
-  let mut pixel_count = 0;
-
+  let mut post_spans = Vec::new();
   for i in 0..width as usize {
-    let filepos_with_offset = lump_offset + &column_array[i];
+    let mut filepos_with_offset = lump_offset + &column_array[i];
 
-    let mut rowstart = 0;
-    let mut span_i = 0;
-    while rowstart != 255 {
-      let inner_file_offset = filepos_with_offset + span_i;
-      topdelta = wad_file[inner_file_offset];
+    let mut delta_to_ignore_next_span = 0;
+    let mut finished_post = false;
 
-      println!("topdelta: {}", topdelta);
+    while finished_post == false {
+      let topdelta = wad_file[filepos_with_offset] as usize;
 
-      span_i += 1;
-      pixel_count = wad_file[inner_file_offset + 1];
-      span_i += 1;
-      let _dummy_value = wad_file[inner_file_offset + 2];
-      span_i += 1;
+      let pixel_count = wad_file[filepos_with_offset + 1] as usize;
+      let mut span_pixels = Vec::with_capacity(pixel_count);
+
+      let _dummy_value = wad_file[filepos_with_offset + 2];
 
       for j in 0..pixel_count as usize {
-        let pixel_palette_addr = wad_file[filepos_with_offset + 3 + j] as usize;
-        pixels.push(pixel_palette_addr);
+        let pixel_addr = filepos_with_offset + 3 + j;
+        let pixel_palette_addr = wad_file[pixel_addr] as usize;
+        span_pixels.push(pixel_palette_addr);
       }
 
-      span_i += pixel_count as usize;
+      post_spans.push(PictureSpan {
+        topdelta: topdelta,
+        length: pixel_count as u8,
+        pixels: span_pixels.to_owned(),
+        blank_vertical_space_preceding: topdelta - delta_to_ignore_next_span,
+      });
+      delta_to_ignore_next_span += topdelta as usize + pixel_count;
+      span_pixels.clear();
 
-      rowstart = 255;
+      let second_dummy_value_addr = filepos_with_offset + 3 + pixel_count as usize;
+
+      filepos_with_offset = second_dummy_value_addr + 1;
+
+      let end_of_post_or_start_of_next_span = wad_file[filepos_with_offset];
+
+      if end_of_post_or_start_of_next_span == 255 {
+        finished_post = true;
+      }
     }
-
-    // let mut spans = Vec::new();
-
-    // println!("1, {:X}", wad_file[filepos_with_offset + 3 + 3] as usize);
-    // println!("2, {:X}", wad_file[filepos_with_offset + 3 + 4] as usize);
-    // println!("3, {:X}", wad_file[filepos_with_offset + 3 + 5] as usize);
-    // println!("4, {:X}", wad_file[filepos_with_offset + 3 + 6] as usize);
-    // println!("5, {:X}", wad_file[filepos_with_offset + 3 + 7] as usize);
-    // println!("6, {:X}", wad_file[filepos_with_offset + 3 + 8] as usize);
-    // println!("7, {:X}", wad_file[filepos_with_offset + 3 + 9] as usize);
-    // println!("8, {:X}", wad_file[filepos_with_offset + 3 + 10] as usize);
-    // println!("9, {:X}", wad_file[filepos_with_offset + 3 + 11] as usize);
-
-    // panic!("boom!");
 
     let new_post = PicturePost {
-      topdelta: topdelta,
-      length: pixel_count,
-      pixels: pixels.to_owned(),
+      pixel_spans: post_spans.to_owned(),
     };
-
-    // Arg; Doom book had a typo! This is column 22, not 32.
-    if i == 22 {
-      println!("{:?}", new_post);
-      panic!("boom!");
-    }
+    post_spans.clear();
 
     posts.push(new_post);
   }

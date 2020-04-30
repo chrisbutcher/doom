@@ -19,13 +19,8 @@ use lyon::tessellation::*;
 use lyon::tessellation::geometry_builder::simple_builder;
 
 // png start
-
-// use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path as std_path;
-// To use encoder.set()
-// use png::HasParameters;
-
 // png end
 
 pub mod camera;
@@ -49,9 +44,9 @@ fn main() {
   let _patch_names = wad_graphics::load_patch_names(&wad_file, &lumps);
 
   let lost_soul_sprite = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "SKULA1");
-  println!("{:?}", lost_soul_sprite);
+  // println!("{:?}", lost_soul_sprite);
 
-  let title_screen = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "TITLEPIC");
+  let lost_soul_sprite = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "TITLEPIC");
   // println!("{:?}", title_screen);
 
   let _some_flat = wad_graphics::load_flat_from_wad(&wad_file, &lumps, "NUKAGE1");
@@ -63,46 +58,49 @@ fn main() {
   let file = File::create(path).unwrap();
   let ref mut w = BufWriter::new(file);
 
-  // let mut encoder = png::Encoder::new(w, lost_soul_sprite.width as u32, lost_soul_sprite.height as u32); // Width is 2 pixels and height is 1.
-
   // TODO: Image is sideways!!
   let mut encoder = png::Encoder::new(w, lost_soul_sprite.height as u32, lost_soul_sprite.width as u32); // Width is 2 pixels and height is 1.
   encoder.set_color(png::ColorType::RGBA);
   encoder.set_depth(png::BitDepth::Eight);
   let mut writer = encoder.write_header().unwrap();
 
-  let mut data = Vec::with_capacity(lost_soul_sprite.width as usize * lost_soul_sprite.height as usize * 3);
-  for post in &lost_soul_sprite.posts {
-    println!("topdelta: {}", post.topdelta);
-    for foo in 0..post.topdelta {
-      // push clear pixels before data pixels
-      data.push(0);
-      data.push(0);
-      data.push(0);
-      data.push(0); // alpha
-    }
-    let mut remaining_pixels_after_data = lost_soul_sprite.height as i16 - post.topdelta as i16;
-    println!("height: {}", lost_soul_sprite.height);
-    println!("ESTIMATED remaining_pixels_after_data: {}", remaining_pixels_after_data);
-    for pixel_addr in &post.pixels {
-      let palette_color = &palette[*pixel_addr];
-      data.push(palette_color.r);
-      data.push(palette_color.g);
-      data.push(palette_color.b);
-      data.push(0xFF); // alpha
-      remaining_pixels_after_data -= 1;
-    }
-    println!("ACTAUL remaining_pixels_after_data: {}", remaining_pixels_after_data);
-    if remaining_pixels_after_data > 0 {
-      for foo in 0..remaining_pixels_after_data {
-        // push clear pixels after data
+  let mut data = Vec::with_capacity(lost_soul_sprite.width as usize * lost_soul_sprite.height as usize * 4);
+  for (i, post) in lost_soul_sprite.posts.iter().enumerate() {
+    let mut pixels_to_write: i16 = lost_soul_sprite.height as i16;
+
+    for span in &post.pixel_spans {
+      for _ in 0..span.blank_vertical_space_preceding {
         data.push(0);
         data.push(0);
         data.push(0);
         data.push(0); // alpha
+
+        pixels_to_write -= 1;
+      }
+
+      for pixel_addr in &span.pixels {
+        let palette_color = &palette[*pixel_addr];
+        data.push(palette_color.r);
+        data.push(palette_color.g);
+        data.push(palette_color.b);
+        data.push(0xFF); // alpha
+
+        pixels_to_write -= 1;
+      }
+    }
+
+    if pixels_to_write > 0 {
+      for _ in 0..pixels_to_write {
+        data.push(0);
+        data.push(0);
+        data.push(0);
+        data.push(0); // alpha
+
+        pixels_to_write -= 1;
       }
     }
   }
+
   writer.write_image_data(&data).unwrap(); // Save
 
   // png end
@@ -201,11 +199,17 @@ pub struct Picture {
 }
 
 #[derive(Debug, Clone)]
-pub struct PicturePost {
-  topdelta: u8,
+pub struct PictureSpan {
+  topdelta: usize,
   length: u8,
   pixels: Vec<usize>, // TODO replace
-                      // pixel_spans: Vec<Vec<usize>>,
+  // pixel_spans: Vec<Vec<usize>>,
+  blank_vertical_space_preceding: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct PicturePost {
+  pixel_spans: Vec<PictureSpan>,
 }
 
 #[derive(Debug, Clone)]
