@@ -18,16 +18,12 @@ use lyon::tessellation::*;
 // use lyon_tessellation::geometry_builder::simple_builder;
 use lyon::tessellation::geometry_builder::simple_builder;
 
-// png start
-use std::io::BufWriter;
-use std::path::Path as std_path;
-// png end
-
 pub mod camera;
 pub mod colors;
 pub mod lumps;
 pub mod map_svg;
 pub mod maps;
+pub mod png_dump;
 pub mod wad_graphics;
 
 // TODO: Read this https://fasterthanli.me/blog/2020/a-half-hour-to-learn-rust/
@@ -44,66 +40,13 @@ fn main() {
   let _patch_names = wad_graphics::load_patch_names(&wad_file, &lumps);
 
   let lost_soul_sprite = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "SKULA1");
-  // println!("{:?}", lost_soul_sprite);
-
-  let lost_soul_sprite = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "TITLEPIC");
-  // println!("{:?}", title_screen);
-
-  let _some_flat = wad_graphics::load_flat_from_wad(&wad_file, &lumps, "NUKAGE1");
+  let title_screen = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "TITLEPIC");
+  let some_flat = wad_graphics::load_flat_from_wad(&wad_file, &lumps, "NUKAGE1");
 
   let _colormap = colors::load_first_colormap(&wad_file, &lumps);
 
-  // png start
-  let path = std_path::new(r"image.png");
-  let file = File::create(path).unwrap();
-  let ref mut w = BufWriter::new(file);
-
-  // TODO: Image is sideways!!
-  let mut encoder = png::Encoder::new(w, lost_soul_sprite.height as u32, lost_soul_sprite.width as u32); // Width is 2 pixels and height is 1.
-  encoder.set_color(png::ColorType::RGBA);
-  encoder.set_depth(png::BitDepth::Eight);
-  let mut writer = encoder.write_header().unwrap();
-
-  let mut data = Vec::with_capacity(lost_soul_sprite.width as usize * lost_soul_sprite.height as usize * 4);
-  for (i, post) in lost_soul_sprite.posts.iter().enumerate() {
-    let mut pixels_to_write: i16 = lost_soul_sprite.height as i16;
-
-    for span in &post.pixel_spans {
-      for _ in 0..span.blank_vertical_space_preceding {
-        data.push(0);
-        data.push(0);
-        data.push(0);
-        data.push(0); // alpha
-
-        pixels_to_write -= 1;
-      }
-
-      for pixel_addr in &span.pixels {
-        let palette_color = &palette[*pixel_addr];
-        data.push(palette_color.r);
-        data.push(palette_color.g);
-        data.push(palette_color.b);
-        data.push(0xFF); // alpha
-
-        pixels_to_write -= 1;
-      }
-    }
-
-    if pixels_to_write > 0 {
-      for _ in 0..pixels_to_write {
-        data.push(0);
-        data.push(0);
-        data.push(0);
-        data.push(0); // alpha
-
-        pixels_to_write -= 1;
-      }
-    }
-  }
-
-  writer.write_image_data(&data).unwrap(); // Save
-
-  // png end
+  png_dump::dump_picture(&lost_soul_sprite, &palette);
+  png_dump::dump_picture(&title_screen, &palette);
 
   let maps = maps::load(&wad_file, &lumps);
 
@@ -196,6 +139,7 @@ pub struct Picture {
   leftoffset: u16,
   topoffset: u16,
   posts: Vec<PicturePost>,
+  lump_name: String,
 }
 
 #[derive(Debug, Clone)]

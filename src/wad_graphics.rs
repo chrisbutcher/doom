@@ -78,6 +78,7 @@ pub fn load_picture_from_wad(wad_file: &Vec<u8>, lumps: &Vec<Lump>, lump_name: &
     leftoffset: leftoffset,
     topoffset: topoffset,
     posts: posts,
+    lump_name: lump_name.to_string(),
   }
 }
 
