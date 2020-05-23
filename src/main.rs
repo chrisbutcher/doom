@@ -35,32 +35,42 @@ fn main() {
   f.read_to_end(&mut wad_file).unwrap();
 
   let lumps = lumps::load(&wad_file);
-  let palette = colors::load_first_palette(&wad_file, &lumps);
-  let _textures = wad_graphics::load_textures(&wad_file, &lumps);
-  let _patch_names = wad_graphics::load_patch_names(&wad_file, &lumps);
 
-  let lost_soul_sprite = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "SKULA1");
-  let title_screen = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "TITLEPIC");
-  let some_flat = wad_graphics::load_flat_from_wad(&wad_file, &lumps, "NUKAGE1");
-
-  let _colormap = colors::load_first_colormap(&wad_file, &lumps);
-
-  png_dump::dump_picture(&lost_soul_sprite, &palette);
-  png_dump::dump_picture(&title_screen, &palette);
-
-  let maps = maps::load(&wad_file, &lumps);
-
-  let current_map = &maps[0];
-
-  // for map in maps {
-  //   draw_map_svg(&map);
-  // }
+  let current_map = maps::load("^E1M1$", &wad_file, &lumps);
   // map_svg::draw_map_svg(current_map);
 
-  // println!("{:?}", current_map);
-
-  // render_scene(current_map, &palette);
+  render_scene(&current_map, &wad_file, &lumps);
 }
+
+// NOTES regarding texturing.
+// From unofficial Doom spec: http://www.gamers.org/dhs/helpdocs/dmsp1666.html
+//
+// Walls:
+//
+// [4-4]: SIDEDEFS
+// If the wall is wider than the texture to be pasted onto it, then the
+// texture is tiled horizontally. A 64-wide texture will be pasted at 0,
+// 64, 128, etc., unless an X-offset changes this.
+//   If the wall is taller than the texture, than the texture is tiled
+// vertically, with one very important difference: it starts new tiles
+// ONLY at 128, 256, 384, etc. So if the texture is less than 128 high,
+// there will be junk filling the undefined areas, and it looks ugly.
+// This is sometimes called the "Tutti Frutti" effect.
+//
+// Ceilings and floors:
+// All the lumpnames for flats are in the directory between the F_START
+// and F_END entries. Calling them flats is a good way to avoid confusion
+// with wall textures. There is no look-up or meta-structure in flats as
+// there is in walls textures. Each flat is 4096 raw bytes, making a square
+// 64 by 64 pixels. This is pasted onto a floor or ceiling with the same
+// orientation as the automap would imply, i.e. the first byte is the color
+// at the NW corner, the 64th byte (byte 63, 0x3f) is the NE corner, etc.
+//   The blocks in the automap grid are 128 by 128, so four flats will fit
+// in each block. Note that there is no way to offset the placement of flats,
+// as can be done with wall textures. They are pasted according to grid lines
+// 64 apart, reckoned from the coordinate (0,0). This allows flats to flow
+// smoothly even across jagged boundaries between sectors with the same
+// floor or ceiling height.
 
 #[derive(Debug)]
 pub struct Lump {
@@ -308,7 +318,23 @@ fn build_floor(
   (new_floor_vbo, new_floor_ibo)
 }
 
-fn render_scene(map: &Map, palette: &Vec<colors::PaletteColor>) {
+fn render_scene(map: &Map, wad_file: &Vec<u8>, lumps: &Vec<Lump>) {
+  // WAD SETUP START
+  let palette = colors::load_first_palette(&wad_file, &lumps);
+  let textures = wad_graphics::load_textures(&wad_file, &lumps);
+  let patch_names = wad_graphics::load_patch_names(&wad_file, &lumps);
+
+  let lost_soul_sprite = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "SKULA1");
+  let title_screen = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "TITLEPIC");
+  let some_flat = wad_graphics::load_flat_from_wad(&wad_file, &lumps, "NUKAGE1");
+
+  let _colormap = colors::load_first_colormap(&wad_file, &lumps);
+
+  // png_dump::dump_picture(&lost_soul_sprite, &palette);
+  // png_dump::dump_picture(&title_screen, &palette);
+
+  // WAD SETUP END
+
   #[allow(unused_imports)]
   use glium::{glutin, Surface};
 
@@ -373,6 +399,21 @@ fn render_scene(map: &Map, palette: &Vec<colors::PaletteColor>) {
         && fside.name_of_upper_texture.is_none()
         && fside.name_of_lower_texture.is_none()
       {
+        let texture_name = fside.name_of_middle_texture.clone().unwrap();
+        if texture_name == "STARTAN3" {
+          println!("{}", texture_name);
+          let texture = textures.iter().find(|&t| t.name == texture_name).unwrap();
+          println!("{:?}", texture);
+
+          for patch in &texture.patches {
+            let fetched_patch = &patch_names[patch.patch_number];
+            println!("fetched_patch.name: {:?}", fetched_patch.name);
+            let patch_picture = wad_graphics::load_picture_from_wad(&wad_file, &lumps, &fetched_patch.name);
+          }
+
+          // println!("patch_picture: {:?}", patch_picture);
+        }
+
         let new_simple_wall = build_wall_quad(
           start_vertex,
           end_vertex,
