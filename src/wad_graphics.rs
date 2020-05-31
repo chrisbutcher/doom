@@ -91,6 +91,17 @@ pub fn load_picture_from_wad(wad_file: &Vec<u8>, lumps: &Vec<Lump>, lump_name: &
         span_pixels.push(pixel_palette_addr);
       }
 
+      if lump_name == "W113_2" {
+        println!(
+          "topdelta: {}, delta_to_ignore_next_span: {}",
+          topdelta, delta_to_ignore_next_span
+        );
+      }
+
+      // topdelta: 0, delta_to_ignore_next_span: 0
+      // topdelta: 46, delta_to_ignore_next_span: 44 # 26th
+      // topdelta: 78, delta_to_ignore_next_span: 120 # 27th
+
       post_spans.push(PictureSpan {
         topdelta: topdelta,
         length: pixel_count as u8,

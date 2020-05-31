@@ -341,37 +341,45 @@ fn texture_to_gl_texture(
   let texture = textures.iter().find(|&t| t.name == texture_name).unwrap();
   let mut imgbuf = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::new(texture.width as u32, texture.height as u32);
 
-  if texture_name == "BROWN1" {
+  if texture_name == "BRNBIGL" {
     println!("{:?}", texture);
-    println!("{:?}", texture.patches);
+    // panic!("boom");
   }
+
+  let mut i = 0;
 
   for patch in &texture.patches {
     let fetched_patch = &patch_names[patch.patch_number];
+
+    if texture_name == "BRNBIGL" {
+      println!("patch #: {}", i);
+    }
+    println!("fetched_patch.name: {}", fetched_patch.name);
+
     let patch_picture = wad_graphics::load_picture_from_wad(&wad_file, &lumps, &fetched_patch.name);
 
     let patch_bytes = wad_graphics::picture_to_rgba_bytes(&patch_picture, &palette);
 
-    let mut patch_x = 0;
-    let mut patch_y = 0;
+    let mut patch_x: i32 = 0;
+    let mut patch_y: i32 = 0;
 
     for raw_pixel in patch_bytes.chunks(4) {
       // println!("patch_x: {}, patch_y: {}", patch_x, patch_y);
 
-      let target_x = patch_x + patch.originx as u32;
-      let target_y = patch_y + patch.originy as u32;
+      let target_x = patch_x + patch.originx as i32;
+      let target_y = patch_y + patch.originy as i32;
 
       // TODO: Deal with negative patch offsets??
 
-      if target_x < texture.width as u32 - 1 && target_y < texture.height as u32 - 1 {
+      if target_x < texture.width as i32 && target_y < texture.height as i32 && target_x >= 0 && target_y >= 0 {
         imgbuf.put_pixel(
-          target_x,
-          target_y,
+          target_x as u32,
+          target_y as u32,
           image::Rgba([raw_pixel[0], raw_pixel[1], raw_pixel[2], raw_pixel[3]]),
         );
       }
       patch_x += 1;
-      if patch_x >= patch_picture.width as u32 {
+      if patch_x >= patch_picture.width as i32 {
         patch_x = 0;
         patch_y += 1;
       }
@@ -398,14 +406,14 @@ fn render_scene(
   let textures = wad_graphics::load_textures(&wad_file, &lumps);
   let patch_names = wad_graphics::load_patch_names(&wad_file, &lumps);
 
-  let lost_soul_sprite = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "SKULA1");
-  let title_screen = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "TITLEPIC");
-  let some_flat = wad_graphics::load_flat_from_wad(&wad_file, &lumps, "NUKAGE1");
+  // let lost_soul_sprite = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "SKULA1");
+  // let title_screen = wad_graphics::load_picture_from_wad(&wad_file, &lumps, "TITLEPIC");
+  // let some_flat = wad_graphics::load_flat_from_wad(&wad_file, &lumps, "NUKAGE1");
 
   let _colormap = colors::load_first_colormap(&wad_file, &lumps);
 
-  png_dump::dump_picture(&title_screen, &palette);
-  png_dump::dump_picture(&lost_soul_sprite, &palette);
+  // png_dump::dump_picture(&title_screen, &palette);
+  // png_dump::dump_picture(&lost_soul_sprite, &palette);
 
   // WAD SETUP END
 
@@ -602,20 +610,21 @@ fn render_scene(
         );
         let new_simple_wall_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &new_simple_wall).unwrap();
 
-        // TODO: Things blow up on texture `BROWN1`.
-        // if &texture_name == "STARTAN3" {
-        let new_gl_textured_wall = GLTexturedWall {
-          gl_vertices: new_simple_wall_vertex_buffer,
-          texture_name: Some(texture_name),
+        // TODO: Things blow up on these textures, when it comes to picture format posts having some
+        // negative `blank_vertical_space_preceding`
+        if &texture_name != "BRNBIGL" && &texture_name != "BRNBIGC" && &texture_name != "BRNBIGR" {
+          let new_gl_textured_wall = GLTexturedWall {
+            gl_vertices: new_simple_wall_vertex_buffer,
+            texture_name: Some(texture_name),
+          };
+          walls.push(new_gl_textured_wall);
+        } else {
+          let new_gl_textured_wall = GLTexturedWall {
+            gl_vertices: new_simple_wall_vertex_buffer,
+            texture_name: None,
+          };
+          walls.push(new_gl_textured_wall);
         };
-        walls.push(new_gl_textured_wall);
-        // } else {
-        //   let new_gl_textured_wall = GLTexturedWall {
-        //     gl_vertices: new_simple_wall_vertex_buffer,
-        //     texture_name: None,
-        //   };
-        //   walls.push(new_gl_textured_wall);
-        // };
       }
     }
 
