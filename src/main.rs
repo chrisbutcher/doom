@@ -597,21 +597,11 @@ fn render_scene(
         );
         let new_simple_wall_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &new_simple_wall).unwrap();
 
-        // TODO: Things blow up on these textures, when it comes to picture format posts having some
-        // negative `blank_vertical_space_preceding`
-        // if &texture_name != "BRNBIGL" && &texture_name != "BRNBIGC" && &texture_name != "BRNBIGR" {
         let new_gl_textured_wall = GLTexturedWall {
           gl_vertices: new_simple_wall_vertex_buffer,
           texture_name: Some(texture_name),
         };
         walls.push(new_gl_textured_wall);
-        // } else {
-        //   let new_gl_textured_wall = GLTexturedWall {
-        //     gl_vertices: new_simple_wall_vertex_buffer,
-        //     texture_name: None,
-        //   };
-        //   walls.push(new_gl_textured_wall);
-        // }
       }
     }
 
@@ -621,6 +611,8 @@ fn render_scene(
         && bside.name_of_upper_texture.is_none()
         && bside.name_of_lower_texture.is_none()
       {
+        let texture_name = bside.name_of_middle_texture.clone().unwrap();
+
         let new_simple_wall = build_wall_quad(
           end_vertex,
           start_vertex,
@@ -631,7 +623,7 @@ fn render_scene(
 
         let new_gl_textured_wall = GLTexturedWall {
           gl_vertices: new_simple_wall_vertex_buffer,
-          texture_name: None,
+          texture_name: Some(texture_name),
         };
         walls.push(new_gl_textured_wall);
       }
