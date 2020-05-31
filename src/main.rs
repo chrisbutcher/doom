@@ -341,6 +341,11 @@ fn texture_to_gl_texture(
   let texture = textures.iter().find(|&t| t.name == texture_name).unwrap();
   let mut imgbuf = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::new(texture.width as u32, texture.height as u32);
 
+  if texture_name == "BROWN1" {
+    println!("{:?}", texture);
+    println!("{:?}", texture.patches);
+  }
+
   for patch in &texture.patches {
     let fetched_patch = &patch_names[patch.patch_number];
     let patch_picture = wad_graphics::load_picture_from_wad(&wad_file, &lumps, &fetched_patch.name);
@@ -353,11 +358,18 @@ fn texture_to_gl_texture(
     for raw_pixel in patch_bytes.chunks(4) {
       // println!("patch_x: {}, patch_y: {}", patch_x, patch_y);
 
-      imgbuf.put_pixel(
-        patch_x + patch.originx as u32,
-        patch_y + patch.originy as u32,
-        image::Rgba([raw_pixel[0], raw_pixel[1], raw_pixel[2], raw_pixel[3]]),
-      );
+      let target_x = patch_x + patch.originx as u32;
+      let target_y = patch_y + patch.originy as u32;
+
+      // TODO: Deal with negative patch offsets??
+
+      if target_x < texture.width as u32 - 1 && target_y < texture.height as u32 - 1 {
+        imgbuf.put_pixel(
+          target_x,
+          target_y,
+          image::Rgba([raw_pixel[0], raw_pixel[1], raw_pixel[2], raw_pixel[3]]),
+        );
+      }
       patch_x += 1;
       if patch_x >= patch_picture.width as u32 {
         patch_x = 0;
@@ -591,19 +603,19 @@ fn render_scene(
         let new_simple_wall_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &new_simple_wall).unwrap();
 
         // TODO: Things blow up on texture `BROWN1`.
-        if &texture_name == "STARTAN3" {
-          let new_gl_textured_wall = GLTexturedWall {
-            gl_vertices: new_simple_wall_vertex_buffer,
-            texture_name: Some(texture_name),
-          };
-          walls.push(new_gl_textured_wall);
-        } else {
-          let new_gl_textured_wall = GLTexturedWall {
-            gl_vertices: new_simple_wall_vertex_buffer,
-            texture_name: None,
-          };
-          walls.push(new_gl_textured_wall);
+        // if &texture_name == "STARTAN3" {
+        let new_gl_textured_wall = GLTexturedWall {
+          gl_vertices: new_simple_wall_vertex_buffer,
+          texture_name: Some(texture_name),
         };
+        walls.push(new_gl_textured_wall);
+        // } else {
+        //   let new_gl_textured_wall = GLTexturedWall {
+        //     gl_vertices: new_simple_wall_vertex_buffer,
+        //     texture_name: None,
+        //   };
+        //   walls.push(new_gl_textured_wall);
+        // };
       }
     }
 
