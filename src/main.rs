@@ -39,7 +39,10 @@ fn main() {
   let current_map = maps::load("^E1M1$", &wad_file, &lumps);
   // map_svg::draw_map_svg(current_map);
 
-  render_scene(&current_map, &wad_file, &lumps);
+  let mut wall_texture_names_to_gl_textures: HashMap<std::string::String, glium::texture::SrgbTexture2d> =
+    HashMap::new();
+
+  render_scene(&current_map, &wad_file, &lumps, wall_texture_names_to_gl_textures);
 }
 
 // NOTES regarding texturing.
@@ -195,6 +198,11 @@ struct GLVertex {
   tex_coords: [f32; 2],
 }
 
+struct GLTexturedWall {
+  gl_vertices: glium::VertexBuffer<GLVertex>,
+  texture_name: Option<String>,
+}
+
 use glium::glutin;
 
 fn build_wall_quad(
@@ -291,8 +299,8 @@ fn build_floor(
 
   assert!(result.is_ok());
 
-  println!("The generated vertices are: {:?}.", &buffers.vertices[..]);
-  println!("The generated indices are: {:?}.", &buffers.indices[..]);
+  // println!("The generated vertices are: {:?}.", &buffers.vertices[..]);
+  // println!("The generated indices are: {:?}.", &buffers.indices[..]);
 
   // panic!("boom");
 
@@ -318,7 +326,61 @@ fn build_floor(
   (new_floor_vbo, new_floor_ibo)
 }
 
-fn render_scene(map: &Map, wad_file: &Vec<u8>, lumps: &Vec<Lump>) {
+// Bundle all of these dependencies into a MapDependencies object? Or just a LoadedMap?
+fn texture_to_gl_texture(
+  texture_name: &str,
+  textures: &Vec<WallTexture>,
+  patch_names: &Vec<Patch>,
+  wad_file: &Vec<u8>,
+  lumps: &Vec<Lump>,
+  palette: &Vec<PaletteColor>,
+  display: &glium::Display,
+) -> glium::texture::SrgbTexture2d {
+  println!("[texture_to_gl_texture] Loading texture: {}", texture_name);
+
+  let texture = textures.iter().find(|&t| t.name == texture_name).unwrap();
+  let mut imgbuf = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::new(texture.width as u32, texture.height as u32);
+
+  for patch in &texture.patches {
+    let fetched_patch = &patch_names[patch.patch_number];
+    let patch_picture = wad_graphics::load_picture_from_wad(&wad_file, &lumps, &fetched_patch.name);
+
+    let patch_bytes = wad_graphics::picture_to_rgba_bytes(&patch_picture, &palette);
+
+    let mut patch_x = 0;
+    let mut patch_y = 0;
+
+    for raw_pixel in patch_bytes.chunks(4) {
+      // println!("patch_x: {}, patch_y: {}", patch_x, patch_y);
+
+      imgbuf.put_pixel(
+        patch_x + patch.originx as u32,
+        patch_y + patch.originy as u32,
+        image::Rgba([raw_pixel[0], raw_pixel[1], raw_pixel[2], raw_pixel[3]]),
+      );
+      patch_x += 1;
+      if patch_x >= patch_picture.width as u32 {
+        patch_x = 0;
+        patch_y += 1;
+      }
+    }
+  }
+
+  let gl_image = glium::texture::RawImage2d::from_raw_rgba_reversed(
+    &imgbuf.into_raw(),
+    (texture.width as u32, texture.height as u32),
+  );
+  let gl_texture = glium::texture::SrgbTexture2d::new(display, gl_image).unwrap();
+
+  gl_texture
+}
+
+fn render_scene(
+  map: &Map,
+  wad_file: &Vec<u8>,
+  lumps: &Vec<Lump>,
+  mut wall_texture_names_to_gl_textures: HashMap<std::string::String, glium::texture::SrgbTexture2d>,
+) {
   // WAD SETUP START
   let palette = colors::load_first_palette(&wad_file, &lumps);
   let textures = wad_graphics::load_textures(&wad_file, &lumps);
@@ -330,8 +392,8 @@ fn render_scene(map: &Map, wad_file: &Vec<u8>, lumps: &Vec<Lump>) {
 
   let _colormap = colors::load_first_colormap(&wad_file, &lumps);
 
-  // png_dump::dump_picture(&lost_soul_sprite, &palette);
-  // png_dump::dump_picture(&title_screen, &palette);
+  png_dump::dump_picture(&title_screen, &palette);
+  png_dump::dump_picture(&lost_soul_sprite, &palette);
 
   // WAD SETUP END
 
@@ -346,212 +408,7 @@ fn render_scene(map: &Map, wad_file: &Vec<u8>, lumps: &Vec<Lump>) {
 
   implement_vertex!(GLVertex, position, normal, tex_coords);
 
-  let mut walls: Vec<glium::VertexBuffer<GLVertex>> = Vec::new();
-  let mut floors: Vec<(glium::VertexBuffer<GLVertex>, glium::IndexBuffer<u16>)> = Vec::new();
-
-  let mut linedef_num = 0;
-
-  let mut vert_tuples_by_sector_id = HashMap::new();
-
-  for line in &map.linedefs {
-    let start_vertex_index = line.start_vertex;
-    let end_vertex_index = line.end_vertex;
-
-    let start_vertex = &map.vertexes[start_vertex_index];
-    let end_vertex = &map.vertexes[end_vertex_index];
-
-    let mut front_sector_floor_height: f32 = -1.0;
-    let mut front_sector_ceiling_height: f32 = -1.0;
-    let mut back_sector_floor_height: f32 = -1.0;
-    let mut back_sector_ceiling_height: f32 = -1.0;
-
-    let front_sidedef = if let Some(front_sidedef_index) = line.front_sidedef_index {
-      let front_sidedef = &map.sidedefs[front_sidedef_index];
-      let front_sector = &map.sectors[front_sidedef.sector_facing];
-      front_sector_floor_height = front_sector.floor_height as f32;
-      front_sector_ceiling_height = front_sector.ceiling_height as f32;
-
-      let keyed_vertex_vector = vert_tuples_by_sector_id
-        .entry(front_sidedef.sector_facing)
-        .or_insert(Vec::<(f32, f32)>::new());
-      keyed_vertex_vector.push((start_vertex.x as f32, start_vertex.y as f32));
-      keyed_vertex_vector.push((end_vertex.x as f32, end_vertex.y as f32));
-
-      Some(front_sidedef)
-    } else {
-      None
-    };
-
-    let back_sidedef = if let Some(back_sidedef_index) = line.back_sidedef_index {
-      let back_sidedef = &map.sidedefs[back_sidedef_index];
-      let back_sector = &map.sectors[back_sidedef.sector_facing];
-      back_sector_floor_height = back_sector.floor_height as f32;
-      back_sector_ceiling_height = back_sector.ceiling_height as f32;
-
-      Some(back_sidedef)
-    } else {
-      None
-    };
-
-    // Simple walls: front
-    if let Some(fside) = front_sidedef {
-      if fside.name_of_middle_texture.is_some()
-        && fside.name_of_upper_texture.is_none()
-        && fside.name_of_lower_texture.is_none()
-      {
-        let texture_name = fside.name_of_middle_texture.clone().unwrap();
-        if texture_name == "STARTAN3" {
-          println!("{}", texture_name);
-          let texture = textures.iter().find(|&t| t.name == texture_name).unwrap();
-          println!("{:?}", texture);
-
-          for patch in &texture.patches {
-            let fetched_patch = &patch_names[patch.patch_number];
-            println!("fetched_patch.name: {:?}", fetched_patch.name);
-            let patch_picture = wad_graphics::load_picture_from_wad(&wad_file, &lumps, &fetched_patch.name);
-          }
-
-          // println!("patch_picture: {:?}", patch_picture);
-        }
-
-        let new_simple_wall = build_wall_quad(
-          start_vertex,
-          end_vertex,
-          front_sector_floor_height,
-          front_sector_ceiling_height,
-        );
-        let new_simple_wall_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &new_simple_wall).unwrap();
-        walls.push(new_simple_wall_vertex_buffer);
-      }
-    }
-
-    // Simple walls: back
-    if let Some(bside) = back_sidedef {
-      if bside.name_of_middle_texture.is_some()
-        && bside.name_of_upper_texture.is_none()
-        && bside.name_of_lower_texture.is_none()
-      {
-        let new_simple_wall = build_wall_quad(
-          end_vertex,
-          start_vertex,
-          back_sector_floor_height,
-          back_sector_ceiling_height,
-        );
-        let new_simple_wall_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &new_simple_wall).unwrap();
-        walls.push(new_simple_wall_vertex_buffer);
-      }
-    }
-
-    // lower walls: front (nearly the same as ... back below)
-    if let Some(fside) = front_sidedef {
-      if fside.name_of_middle_texture.is_none()
-        && (fside.name_of_upper_texture.is_some() // NOTE some vs. none here
-        || fside.name_of_lower_texture.is_some())
-      {
-        /////////// UP STEP
-        let low_y: f32;
-        let high_y: f32;
-
-        if front_sector_floor_height < back_sector_floor_height {
-          low_y = front_sector_floor_height;
-          high_y = back_sector_floor_height;
-        } else {
-          low_y = back_sector_floor_height;
-          high_y = front_sector_floor_height;
-        }
-
-        if low_y != high_y {
-          let front_up_step = build_wall_quad(start_vertex, end_vertex, low_y, high_y);
-          let front_up_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_up_step).unwrap();
-          walls.push(front_up_step_vertex_buffer);
-        }
-
-        /////////// DOWN STEP
-        let low_y: f32;
-        let high_y: f32;
-
-        if front_sector_ceiling_height < back_sector_ceiling_height {
-          low_y = front_sector_ceiling_height;
-          high_y = back_sector_ceiling_height;
-        } else {
-          low_y = back_sector_ceiling_height;
-          high_y = front_sector_ceiling_height;
-        }
-
-        if low_y != high_y {
-          let front_down_step = build_wall_quad(start_vertex, end_vertex, low_y, high_y);
-          let front_down_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_down_step).unwrap();
-          walls.push(front_down_step_vertex_buffer);
-        }
-      }
-    }
-
-    // lower walls: back (nearly the same as ... front above)
-    if let Some(bside) = back_sidedef {
-      if bside.name_of_middle_texture.is_none()
-        && (bside.name_of_upper_texture.is_some() // NOTE some vs. none here
-        || bside.name_of_lower_texture.is_some())
-      {
-        /////////// UP STEP
-        let low_y: f32;
-        let high_y: f32;
-
-        if front_sector_floor_height < back_sector_floor_height {
-          low_y = front_sector_floor_height;
-          high_y = back_sector_floor_height;
-        } else {
-          low_y = back_sector_floor_height;
-          high_y = front_sector_floor_height;
-        }
-
-        if low_y != high_y {
-          let front_up_step = build_wall_quad(end_vertex, start_vertex, low_y, high_y);
-          let front_up_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_up_step).unwrap();
-          walls.push(front_up_step_vertex_buffer);
-        }
-
-        /////////// DOWN STEP
-        let low_y: f32;
-        let high_y: f32;
-
-        if front_sector_ceiling_height < back_sector_ceiling_height {
-          low_y = front_sector_ceiling_height;
-          high_y = back_sector_ceiling_height;
-        } else {
-          low_y = back_sector_ceiling_height;
-          high_y = front_sector_ceiling_height;
-        }
-
-        if low_y != high_y {
-          let front_down_step = build_wall_quad(end_vertex, start_vertex, low_y, high_y);
-          let front_down_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_down_step).unwrap();
-          walls.push(front_down_step_vertex_buffer);
-        }
-      }
-    }
-
-    linedef_num += 1;
-  }
-
-  if true {
-    // TODO: Floor rendering: disabled for now.
-    let mut sector_index = 0;
-    for sector in &map.sectors {
-      // TODO: Temporary: if sector_index == 1 {
-      if sector_index == 1 {
-        // TODO: Need to pass in verts for any overlapping sectors, too, to specify where holes are.
-        if let Some(verts_for_floor) = vert_tuples_by_sector_id.get(&sector_index) {
-          let (new_floor_vbo, new_floor_ibo) = build_floor(&verts_for_floor, &sector, &display);
-          floors.push((new_floor_vbo, new_floor_ibo));
-        }
-      }
-
-      sector_index += 1;
-    }
-  }
-
-  ////////
-
+  // DEFAULT GL TEXTURE (start)
   let image = image::load(
     Cursor::new(&include_bytes!("../tuto-14-diffuse.jpg")[..]),
     image::ImageFormat::Jpeg,
@@ -650,9 +507,270 @@ fn render_scene(map: &Map, wad_file: &Vec<u8>, lumps: &Vec<Lump>) {
     }
   "#;
 
-  let mut camera = camera::Camera::new([3927.552, 1258.45, -2268.088], -1043.7999, 35.100002);
-
   let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
+  // DEFAULT GL TEXTURE (end)
+
+  let fragment_shader_src_2 = r#"
+    #version 140
+    
+    in vec3 v_normal;
+    in vec3 v_position;
+    in vec2 v_tex_coords;
+    
+    out vec4 color;
+    
+    uniform sampler2D diffuse_tex;
+    
+    void main() {
+      color = texture(diffuse_tex, v_tex_coords);
+    }
+  "#;
+  let program_2 = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src_2, None).unwrap();
+
+  let mut walls: Vec<GLTexturedWall> = Vec::new();
+  let mut floors: Vec<(glium::VertexBuffer<GLVertex>, glium::IndexBuffer<u16>)> = Vec::new();
+
+  let mut linedef_num = 0;
+
+  let mut vert_tuples_by_sector_id = HashMap::new();
+
+  for line in &map.linedefs {
+    let start_vertex_index = line.start_vertex;
+    let end_vertex_index = line.end_vertex;
+
+    let start_vertex = &map.vertexes[start_vertex_index];
+    let end_vertex = &map.vertexes[end_vertex_index];
+
+    let mut front_sector_floor_height: f32 = -1.0;
+    let mut front_sector_ceiling_height: f32 = -1.0;
+    let mut back_sector_floor_height: f32 = -1.0;
+    let mut back_sector_ceiling_height: f32 = -1.0;
+
+    let front_sidedef = if let Some(front_sidedef_index) = line.front_sidedef_index {
+      let front_sidedef = &map.sidedefs[front_sidedef_index];
+      let front_sector = &map.sectors[front_sidedef.sector_facing];
+      front_sector_floor_height = front_sector.floor_height as f32;
+      front_sector_ceiling_height = front_sector.ceiling_height as f32;
+
+      let keyed_vertex_vector = vert_tuples_by_sector_id
+        .entry(front_sidedef.sector_facing)
+        .or_insert(Vec::<(f32, f32)>::new());
+      keyed_vertex_vector.push((start_vertex.x as f32, start_vertex.y as f32));
+      keyed_vertex_vector.push((end_vertex.x as f32, end_vertex.y as f32));
+
+      Some(front_sidedef)
+    } else {
+      None
+    };
+
+    let back_sidedef = if let Some(back_sidedef_index) = line.back_sidedef_index {
+      let back_sidedef = &map.sidedefs[back_sidedef_index];
+      let back_sector = &map.sectors[back_sidedef.sector_facing];
+      back_sector_floor_height = back_sector.floor_height as f32;
+      back_sector_ceiling_height = back_sector.ceiling_height as f32;
+
+      Some(back_sidedef)
+    } else {
+      None
+    };
+
+    // Simple walls: front
+    if let Some(fside) = front_sidedef {
+      if fside.name_of_middle_texture.is_some()
+        && fside.name_of_upper_texture.is_none()
+        && fside.name_of_lower_texture.is_none()
+      {
+        let texture_name = fside.name_of_middle_texture.clone().unwrap();
+
+        let new_simple_wall = build_wall_quad(
+          start_vertex,
+          end_vertex,
+          front_sector_floor_height,
+          front_sector_ceiling_height,
+        );
+        let new_simple_wall_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &new_simple_wall).unwrap();
+
+        // TODO: Things blow up on texture `BROWN1`.
+        if &texture_name == "STARTAN3" {
+          let new_gl_textured_wall = GLTexturedWall {
+            gl_vertices: new_simple_wall_vertex_buffer,
+            texture_name: Some(texture_name),
+          };
+          walls.push(new_gl_textured_wall);
+        } else {
+          let new_gl_textured_wall = GLTexturedWall {
+            gl_vertices: new_simple_wall_vertex_buffer,
+            texture_name: None,
+          };
+          walls.push(new_gl_textured_wall);
+        };
+      }
+    }
+
+    // Simple walls: back
+    if let Some(bside) = back_sidedef {
+      if bside.name_of_middle_texture.is_some()
+        && bside.name_of_upper_texture.is_none()
+        && bside.name_of_lower_texture.is_none()
+      {
+        let new_simple_wall = build_wall_quad(
+          end_vertex,
+          start_vertex,
+          back_sector_floor_height,
+          back_sector_ceiling_height,
+        );
+        let new_simple_wall_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &new_simple_wall).unwrap();
+
+        let new_gl_textured_wall = GLTexturedWall {
+          gl_vertices: new_simple_wall_vertex_buffer,
+          texture_name: None,
+        };
+        walls.push(new_gl_textured_wall);
+      }
+    }
+
+    // lower walls: front (nearly the same as ... back below)
+    if let Some(fside) = front_sidedef {
+      if fside.name_of_middle_texture.is_none()
+        && (fside.name_of_upper_texture.is_some() // NOTE some vs. none here
+        || fside.name_of_lower_texture.is_some())
+      {
+        /////////// UP STEP
+        let low_y: f32;
+        let high_y: f32;
+
+        if front_sector_floor_height < back_sector_floor_height {
+          low_y = front_sector_floor_height;
+          high_y = back_sector_floor_height;
+        } else {
+          low_y = back_sector_floor_height;
+          high_y = front_sector_floor_height;
+        }
+
+        if low_y != high_y {
+          let front_up_step = build_wall_quad(start_vertex, end_vertex, low_y, high_y);
+          let front_up_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_up_step).unwrap();
+
+          let new_gl_textured_wall = GLTexturedWall {
+            gl_vertices: front_up_step_vertex_buffer,
+            texture_name: None,
+          };
+          walls.push(new_gl_textured_wall);
+        }
+
+        /////////// DOWN STEP
+        let low_y: f32;
+        let high_y: f32;
+
+        if front_sector_ceiling_height < back_sector_ceiling_height {
+          low_y = front_sector_ceiling_height;
+          high_y = back_sector_ceiling_height;
+        } else {
+          low_y = back_sector_ceiling_height;
+          high_y = front_sector_ceiling_height;
+        }
+
+        if low_y != high_y {
+          let front_down_step = build_wall_quad(start_vertex, end_vertex, low_y, high_y);
+          let front_down_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_down_step).unwrap();
+
+          let new_gl_textured_wall = GLTexturedWall {
+            gl_vertices: front_down_step_vertex_buffer,
+            texture_name: None,
+          };
+          walls.push(new_gl_textured_wall);
+        }
+      }
+    }
+
+    // lower walls: back (nearly the same as ... front above)
+    if let Some(bside) = back_sidedef {
+      if bside.name_of_middle_texture.is_none()
+        && (bside.name_of_upper_texture.is_some() // NOTE some vs. none here
+        || bside.name_of_lower_texture.is_some())
+      {
+        /////////// UP STEP
+        let low_y: f32;
+        let high_y: f32;
+
+        if front_sector_floor_height < back_sector_floor_height {
+          low_y = front_sector_floor_height;
+          high_y = back_sector_floor_height;
+        } else {
+          low_y = back_sector_floor_height;
+          high_y = front_sector_floor_height;
+        }
+
+        if low_y != high_y {
+          let front_up_step = build_wall_quad(end_vertex, start_vertex, low_y, high_y);
+          let front_up_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_up_step).unwrap();
+
+          let new_gl_textured_wall = GLTexturedWall {
+            gl_vertices: front_up_step_vertex_buffer,
+            texture_name: None,
+          };
+          walls.push(new_gl_textured_wall);
+        }
+
+        /////////// DOWN STEP
+        let low_y: f32;
+        let high_y: f32;
+
+        if front_sector_ceiling_height < back_sector_ceiling_height {
+          low_y = front_sector_ceiling_height;
+          high_y = back_sector_ceiling_height;
+        } else {
+          low_y = back_sector_ceiling_height;
+          high_y = front_sector_ceiling_height;
+        }
+
+        if low_y != high_y {
+          let front_down_step = build_wall_quad(end_vertex, start_vertex, low_y, high_y);
+          let front_down_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_down_step).unwrap();
+
+          let new_gl_textured_wall = GLTexturedWall {
+            gl_vertices: front_down_step_vertex_buffer,
+            texture_name: None,
+          };
+          walls.push(new_gl_textured_wall);
+        }
+      }
+    }
+
+    linedef_num += 1;
+  }
+
+  // Pre-caching all wall textures
+  for wall in &walls {
+    match &wall.texture_name {
+      Some(n) => {
+        let gl_texture = texture_to_gl_texture(&n, &textures, &patch_names, &wad_file, &lumps, &palette, &display);
+        wall_texture_names_to_gl_textures.insert(n.clone(), gl_texture);
+      }
+      _ => {}
+    };
+  }
+
+  if true {
+    // TODO: Floor rendering: disabled for now.
+    let mut sector_index = 0;
+    for sector in &map.sectors {
+      // TODO: Temporary: if sector_index == 1 {
+      if sector_index == 1 {
+        // TODO: Need to pass in verts for any overlapping sectors, too, to specify where holes are.
+        if let Some(verts_for_floor) = vert_tuples_by_sector_id.get(&sector_index) {
+          let (new_floor_vbo, new_floor_ibo) = build_floor(&verts_for_floor, &sector, &display);
+          floors.push((new_floor_vbo, new_floor_ibo));
+        }
+      }
+
+      sector_index += 1;
+    }
+  }
+
+  ////////
+
+  let mut camera = camera::Camera::new([3927.552, 1258.45, -2268.088], -1043.7999, 35.100002);
 
   event_loop.run(move |event, _, control_flow| {
     let next_frame_time = std::time::Instant::now() + std::time::Duration::from_nanos(16_666_667);
@@ -730,22 +848,44 @@ fn render_scene(map: &Map, wad_file: &Vec<u8>, lumps: &Vec<Lump>) {
     // gzdoom
 
     for wall in &walls {
-      target
-        .draw(
-          wall,
-          glium::index::NoIndices(glium::index::PrimitiveType::TriangleStrip),
-          &program,
-          &uniform! {
-            model: model,
-            view: view,
-            perspective: perspective,
-            u_light: light,
-            diffuse_tex: &diffuse_texture,
-            normal_tex: &normal_map
-          },
-          &params,
-        )
-        .unwrap();
+      match &wall.texture_name {
+        Some(texture_name) => {
+          let fetched_diffuse_tex = wall_texture_names_to_gl_textures.get(texture_name).unwrap();
+
+          target
+            .draw(
+              &wall.gl_vertices,
+              glium::index::NoIndices(glium::index::PrimitiveType::TriangleStrip),
+              &program_2,
+              &uniform! {
+                model: model,
+                view: view,
+                perspective: perspective,
+                diffuse_tex: fetched_diffuse_tex,
+              },
+              &params,
+            )
+            .unwrap();
+        }
+        _ => {
+          target
+            .draw(
+              &wall.gl_vertices,
+              glium::index::NoIndices(glium::index::PrimitiveType::TriangleStrip),
+              &program,
+              &uniform! {
+                model: model,
+                view: view,
+                perspective: perspective,
+                u_light: light,
+                diffuse_tex: &diffuse_texture,
+                normal_tex: &normal_map
+              },
+              &params,
+            )
+            .unwrap();
+        }
+      };
     }
 
     for floor in &floors {
