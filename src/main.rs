@@ -12,7 +12,7 @@ use std::io::Cursor;
 
 // use lyon::geometry_builder::simple_builder;
 use lyon::math::{point, Point};
-use lyon::path::builder::*;
+// use lyon::path::builder::*;
 use lyon::path::Path;
 use lyon::tessellation::*;
 // use lyon_tessellation::geometry_builder::simple_builder;
@@ -39,8 +39,7 @@ fn main() {
   let current_map = maps::load("^E1M1$", &wad_file, &lumps);
   // map_svg::draw_map_svg(current_map);
 
-  let mut wall_texture_names_to_gl_textures: HashMap<std::string::String, glium::texture::SrgbTexture2d> =
-    HashMap::new();
+  let wall_texture_names_to_gl_textures: HashMap<std::string::String, glium::texture::SrgbTexture2d> = HashMap::new();
 
   render_scene(&current_map, &wad_file, &lumps, wall_texture_names_to_gl_textures);
 }
@@ -159,9 +158,9 @@ pub struct Picture {
 pub struct PictureSpan {
   topdelta: usize,
   length: u8,
-  pixels: Vec<usize>, // TODO replace
-  // pixel_spans: Vec<Vec<usize>>,
-  blank_vertical_space_preceding: usize,
+  pixels: Vec<usize>,
+  last_span_pixel_count: usize,
+  last_span_topdelta: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -341,20 +340,10 @@ fn texture_to_gl_texture(
   let texture = textures.iter().find(|&t| t.name == texture_name).unwrap();
   let mut imgbuf = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::new(texture.width as u32, texture.height as u32);
 
-  if texture_name == "BRNBIGL" {
-    println!("{:?}", texture);
-    // panic!("boom");
-  }
-
   let mut i = 0;
 
   for patch in &texture.patches {
     let fetched_patch = &patch_names[patch.patch_number];
-
-    if texture_name == "BRNBIGL" {
-      println!("patch #: {}", i);
-    }
-    println!("fetched_patch.name: {}", fetched_patch.name);
 
     let patch_picture = wad_graphics::load_picture_from_wad(&wad_file, &lumps, &fetched_patch.name);
 
@@ -550,8 +539,6 @@ fn render_scene(
   let mut walls: Vec<GLTexturedWall> = Vec::new();
   let mut floors: Vec<(glium::VertexBuffer<GLVertex>, glium::IndexBuffer<u16>)> = Vec::new();
 
-  let mut linedef_num = 0;
-
   let mut vert_tuples_by_sector_id = HashMap::new();
 
   for line in &map.linedefs {
@@ -612,19 +599,19 @@ fn render_scene(
 
         // TODO: Things blow up on these textures, when it comes to picture format posts having some
         // negative `blank_vertical_space_preceding`
-        if &texture_name != "BRNBIGL" && &texture_name != "BRNBIGC" && &texture_name != "BRNBIGR" {
-          let new_gl_textured_wall = GLTexturedWall {
-            gl_vertices: new_simple_wall_vertex_buffer,
-            texture_name: Some(texture_name),
-          };
-          walls.push(new_gl_textured_wall);
-        } else {
-          let new_gl_textured_wall = GLTexturedWall {
-            gl_vertices: new_simple_wall_vertex_buffer,
-            texture_name: None,
-          };
-          walls.push(new_gl_textured_wall);
+        // if &texture_name != "BRNBIGL" && &texture_name != "BRNBIGC" && &texture_name != "BRNBIGR" {
+        let new_gl_textured_wall = GLTexturedWall {
+          gl_vertices: new_simple_wall_vertex_buffer,
+          texture_name: Some(texture_name),
         };
+        walls.push(new_gl_textured_wall);
+        // } else {
+        //   let new_gl_textured_wall = GLTexturedWall {
+        //     gl_vertices: new_simple_wall_vertex_buffer,
+        //     texture_name: None,
+        //   };
+        //   walls.push(new_gl_textured_wall);
+        // }
       }
     }
 
@@ -757,16 +744,16 @@ fn render_scene(
         }
       }
     }
-
-    linedef_num += 1;
   }
 
   // Pre-caching all wall textures
   for wall in &walls {
     match &wall.texture_name {
       Some(n) => {
-        let gl_texture = texture_to_gl_texture(&n, &textures, &patch_names, &wad_file, &lumps, &palette, &display);
-        wall_texture_names_to_gl_textures.insert(n.clone(), gl_texture);
+        if !wall_texture_names_to_gl_textures.contains_key(n) {
+          let gl_texture = texture_to_gl_texture(&n, &textures, &patch_names, &wad_file, &lumps, &palette, &display);
+          wall_texture_names_to_gl_textures.insert(n.clone(), gl_texture);
+        }
       }
       _ => {}
     };

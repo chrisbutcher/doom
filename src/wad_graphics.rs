@@ -6,7 +6,7 @@ pub fn picture_to_rgba_bytes(picture: &Picture, palette: &std::vec::Vec<PaletteC
     let mut y = 0;
 
     for span in &post.pixel_spans {
-      for _ in 0..span.blank_vertical_space_preceding {
+      for _ in 0..span.topdelta - span.last_span_pixel_count - span.last_span_topdelta {
         let index = (i + y * picture.width as usize) * 4;
 
         data[index] = 0;
@@ -73,8 +73,8 @@ pub fn load_picture_from_wad(wad_file: &Vec<u8>, lumps: &Vec<Lump>, lump_name: &
   let mut post_spans = Vec::new();
   for i in 0..width as usize {
     let mut filepos_with_offset = lump_offset + &column_array[i];
-
-    let mut delta_to_ignore_next_span = 0;
+    let mut last_span_pixel_count = 0;
+    let mut last_span_topdelta = 0;
     let mut finished_post = false;
 
     while finished_post == false {
@@ -91,24 +91,17 @@ pub fn load_picture_from_wad(wad_file: &Vec<u8>, lumps: &Vec<Lump>, lump_name: &
         span_pixels.push(pixel_palette_addr);
       }
 
-      if lump_name == "W113_2" {
-        println!(
-          "topdelta: {}, delta_to_ignore_next_span: {}",
-          topdelta, delta_to_ignore_next_span
-        );
-      }
-
-      // topdelta: 0, delta_to_ignore_next_span: 0
-      // topdelta: 46, delta_to_ignore_next_span: 44 # 26th
-      // topdelta: 78, delta_to_ignore_next_span: 120 # 27th
-
       post_spans.push(PictureSpan {
         topdelta: topdelta,
         length: pixel_count as u8,
         pixels: span_pixels.to_owned(),
-        blank_vertical_space_preceding: topdelta - delta_to_ignore_next_span,
+        last_span_pixel_count: last_span_pixel_count,
+        last_span_topdelta: last_span_topdelta,
       });
-      delta_to_ignore_next_span += topdelta as usize + pixel_count;
+
+      last_span_pixel_count = pixel_count;
+      last_span_topdelta = topdelta;
+
       span_pixels.clear();
 
       let second_dummy_value_addr = filepos_with_offset + 3 + pixel_count as usize;
