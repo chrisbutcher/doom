@@ -48,7 +48,7 @@ pub fn picture_to_rgba_bytes(picture: &Picture, palette: &std::vec::Vec<PaletteC
 }
 
 pub fn load_picture_from_wad(wad_file: &Vec<u8>, lumps: &Vec<Lump>, lump_name: &str) -> Picture {
-  let picture_lump = lumps.iter().find(|&l| l.name == lump_name).unwrap();
+  let picture_lump = lumps.iter().find(|&l| l.name == lump_name.to_uppercase()).unwrap();
 
   let lump_offset = picture_lump.filepos;
 

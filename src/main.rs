@@ -340,8 +340,6 @@ fn texture_to_gl_texture(
   let texture = textures.iter().find(|&t| t.name == texture_name).unwrap();
   let mut imgbuf = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::new(texture.width as u32, texture.height as u32);
 
-  let mut i = 0;
-
   for patch in &texture.patches {
     let fetched_patch = &patch_names[patch.patch_number];
 
@@ -403,7 +401,6 @@ fn render_scene(
 
   // png_dump::dump_picture(&title_screen, &palette);
   // png_dump::dump_picture(&lost_soul_sprite, &palette);
-
   // WAD SETUP END
 
   #[allow(unused_imports)]
@@ -651,9 +648,15 @@ fn render_scene(
           let front_up_step = build_wall_quad(start_vertex, end_vertex, low_y, high_y);
           let front_up_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_up_step).unwrap();
 
+          let texture_name = if fside.name_of_lower_texture.is_some() {
+            fside.name_of_lower_texture.clone()
+          } else {
+            None
+          };
+
           let new_gl_textured_wall = GLTexturedWall {
             gl_vertices: front_up_step_vertex_buffer,
-            texture_name: None,
+            texture_name: texture_name,
           };
           walls.push(new_gl_textured_wall);
         }
@@ -674,9 +677,15 @@ fn render_scene(
           let front_down_step = build_wall_quad(start_vertex, end_vertex, low_y, high_y);
           let front_down_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_down_step).unwrap();
 
+          let texture_name = if fside.name_of_upper_texture.is_some() {
+            fside.name_of_upper_texture.clone()
+          } else {
+            None
+          };
+
           let new_gl_textured_wall = GLTexturedWall {
             gl_vertices: front_down_step_vertex_buffer,
-            texture_name: None,
+            texture_name: texture_name,
           };
           walls.push(new_gl_textured_wall);
         }
@@ -705,9 +714,15 @@ fn render_scene(
           let front_up_step = build_wall_quad(end_vertex, start_vertex, low_y, high_y);
           let front_up_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_up_step).unwrap();
 
+          let texture_name = if bside.name_of_lower_texture.is_some() {
+            bside.name_of_lower_texture.clone()
+          } else {
+            None
+          };
+
           let new_gl_textured_wall = GLTexturedWall {
             gl_vertices: front_up_step_vertex_buffer,
-            texture_name: None,
+            texture_name: texture_name,
           };
           walls.push(new_gl_textured_wall);
         }
@@ -728,9 +743,15 @@ fn render_scene(
           let front_down_step = build_wall_quad(end_vertex, start_vertex, low_y, high_y);
           let front_down_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_down_step).unwrap();
 
+          let texture_name = if bside.name_of_upper_texture.is_some() {
+            bside.name_of_upper_texture.clone()
+          } else {
+            None
+          };
+
           let new_gl_textured_wall = GLTexturedWall {
             gl_vertices: front_down_step_vertex_buffer,
-            texture_name: None,
+            texture_name: texture_name,
           };
           walls.push(new_gl_textured_wall);
         }
@@ -868,22 +889,22 @@ fn render_scene(
             .unwrap();
         }
         _ => {
-          target
-            .draw(
-              &wall.gl_vertices,
-              glium::index::NoIndices(glium::index::PrimitiveType::TriangleStrip),
-              &program,
-              &uniform! {
-                model: model,
-                view: view,
-                perspective: perspective,
-                u_light: light,
-                diffuse_tex: &diffuse_texture,
-                normal_tex: &normal_map
-              },
-              &params,
-            )
-            .unwrap();
+          // target
+          //   .draw(
+          //     &wall.gl_vertices,
+          //     glium::index::NoIndices(glium::index::PrimitiveType::TriangleStrip),
+          //     &program,
+          //     &uniform! {
+          //       model: model,
+          //       view: view,
+          //       perspective: perspective,
+          //       u_light: light,
+          //       diffuse_tex: &diffuse_texture,
+          //       normal_tex: &normal_map
+          //     },
+          //     &params,
+          //   )
+          //   .unwrap();
         }
       };
     }
