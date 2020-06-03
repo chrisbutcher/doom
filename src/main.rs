@@ -871,7 +871,11 @@ fn render_scene(
     for wall in &walls {
       match &wall.texture_name {
         Some(texture_name) => {
-          let fetched_diffuse_tex = wall_texture_names_to_gl_textures.get(texture_name).unwrap();
+          let fetched_diffuse_tex = wall_texture_names_to_gl_textures
+            .get(texture_name)
+            .unwrap()
+            .sampled()
+            .magnify_filter(glium::uniforms::MagnifySamplerFilter::Nearest);
 
           target
             .draw(
