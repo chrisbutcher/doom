@@ -236,6 +236,7 @@ fn build_wall_quad(
   vertex_2: &MapVertex,
   wall_height_bottom: f32,
   wall_height_top: f32,
+  texture: Option<&WallTexture>,
 ) -> [GLVertex; 4] {
   // C *------* D
   //   | \  2 |
@@ -246,31 +247,38 @@ fn build_wall_quad(
 
   // https://en.wikipedia.org/wiki/Triangle_strip -- only 4 verts needed to draw two triangles.
 
+  let tex_coords = if texture.is_some() {
+    // TODO: Scale these UV coordinates, based on width, height of quad
+    [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]
+  } else {
+    [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]
+  };
+
   // TODO: Calculate actual quad normals... right now, they're all negative in the z direction
   [
     GLVertex {
       // A
       position: [vertex_1.x as f32, wall_height_bottom as f32, vertex_1.y as f32],
       normal: [0.0, 0.0, -1.0],
-      tex_coords: [0.0, 0.0],
+      tex_coords: tex_coords[0],
     },
     GLVertex {
       // B
       position: [vertex_2.x as f32, wall_height_bottom as f32, vertex_2.y as f32],
       normal: [0.0, 0.0, -1.0],
-      tex_coords: [1.0, 0.0],
+      tex_coords: tex_coords[1],
     },
     GLVertex {
       // C
       position: [vertex_1.x as f32, wall_height_top as f32, vertex_1.y as f32],
       normal: [0.0, 0.0, -1.0],
-      tex_coords: [0.0, 1.0],
+      tex_coords: tex_coords[2],
     },
     GLVertex {
       // D
       position: [vertex_2.x as f32, wall_height_top as f32, vertex_2.y as f32],
       normal: [0.0, 0.0, -1.0],
-      tex_coords: [1.0, 1.0],
+      tex_coords: tex_coords[3],
     },
   ]
 }
@@ -598,11 +606,15 @@ fn render(mut scene: Scene) {
       {
         let texture_name = fside.name_of_middle_texture.clone().unwrap();
 
+        // TODO: Do this more efficiently, with Hashmap etc.
+        let texture = scene.textures.iter().find(|&t| t.name == texture_name).unwrap();
+
         let new_simple_wall = build_wall_quad(
           start_vertex,
           end_vertex,
           front_sector_floor_height,
           front_sector_ceiling_height,
+          Some(texture),
         );
         let new_simple_wall_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &new_simple_wall).unwrap();
 
@@ -627,6 +639,7 @@ fn render(mut scene: Scene) {
           start_vertex,
           back_sector_floor_height,
           back_sector_ceiling_height,
+          None,
         );
         let new_simple_wall_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &new_simple_wall).unwrap();
 
@@ -657,7 +670,7 @@ fn render(mut scene: Scene) {
         }
 
         if low_y != high_y {
-          let front_up_step = build_wall_quad(start_vertex, end_vertex, low_y, high_y);
+          let front_up_step = build_wall_quad(start_vertex, end_vertex, low_y, high_y, None);
           let front_up_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_up_step).unwrap();
 
           let texture_name = if fside.name_of_lower_texture.is_some() {
@@ -686,7 +699,7 @@ fn render(mut scene: Scene) {
         }
 
         if low_y != high_y {
-          let front_down_step = build_wall_quad(start_vertex, end_vertex, low_y, high_y);
+          let front_down_step = build_wall_quad(start_vertex, end_vertex, low_y, high_y, None);
           let front_down_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_down_step).unwrap();
 
           let texture_name = if fside.name_of_upper_texture.is_some() {
@@ -723,7 +736,7 @@ fn render(mut scene: Scene) {
         }
 
         if low_y != high_y {
-          let front_up_step = build_wall_quad(end_vertex, start_vertex, low_y, high_y);
+          let front_up_step = build_wall_quad(end_vertex, start_vertex, low_y, high_y, None);
           let front_up_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_up_step).unwrap();
 
           let texture_name = if bside.name_of_lower_texture.is_some() {
@@ -752,7 +765,7 @@ fn render(mut scene: Scene) {
         }
 
         if low_y != high_y {
-          let front_down_step = build_wall_quad(end_vertex, start_vertex, low_y, high_y);
+          let front_down_step = build_wall_quad(end_vertex, start_vertex, low_y, high_y, None);
           let front_down_step_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &front_down_step).unwrap();
 
           let texture_name = if bside.name_of_upper_texture.is_some() {
