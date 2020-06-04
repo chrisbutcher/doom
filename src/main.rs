@@ -544,7 +544,13 @@ fn render(mut scene: Scene) {
 
   let mut vert_tuples_by_sector_id = HashMap::new();
 
+  let mut linedef_index = 0;
+
   for line in &scene.map.linedefs {
+    // if linedef_index != 6 {
+    //   continue;
+    // }
+
     let start_vertex_index = line.start_vertex;
     let end_vertex_index = line.end_vertex;
 
@@ -763,6 +769,8 @@ fn render(mut scene: Scene) {
         }
       }
     }
+
+    linedef_index += 1;
   }
 
   // Pre-caching all wall textures
@@ -799,7 +807,7 @@ fn render(mut scene: Scene) {
 
   ////////
 
-  let mut camera = camera::Camera::new([3927.552, 1258.45, -2268.088], -1043.7999, 35.100002);
+  let mut camera = camera::Camera::new([1031.2369, 66.481995, -3472.9282], -2460.6008, 17.500008);
 
   event_loop.run(move |event, _, control_flow| {
     let next_frame_time = std::time::Instant::now() + std::time::Duration::from_nanos(16_666_667);
