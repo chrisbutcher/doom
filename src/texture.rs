@@ -111,6 +111,9 @@ impl Texture {
     let cmd_buffer = encoder.finish();
 
     let view = texture.create_default_view();
+
+    // NOTE: Sampler is like a Photoshop inkdropper. It picks the coloured pixel out from the underlyig texture,
+    // given a UV coordinate.
     let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
       address_mode_u: wgpu::AddressMode::ClampToEdge,
       address_mode_v: wgpu::AddressMode::ClampToEdge,

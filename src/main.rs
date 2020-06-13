@@ -274,7 +274,7 @@ fn render_v2(scene: Scene) {
   });
 }
 
-// ---------- OpenGL-specific structs
+// // ---------- OpenGL-specific structs
 // #[derive(Copy, Clone)]
 // struct GLVertex {
 //   position: [f32; 3],
@@ -596,7 +596,7 @@ fn render_v2(scene: Scene) {
 //   let mut walls: Vec<GLTexturedWall> = Vec::new();
 //   let mut floors: Vec<(glium::VertexBuffer<GLVertex>, glium::IndexBuffer<u16>)> = Vec::new();
 
-//   let mut vert_tuples_by_sector_id = HashMap::new();
+// let mut vert_tuples_by_sector_id = HashMap::new();
 
 //   let mut linedef_index = 0;
 

@@ -32,6 +32,7 @@ pub struct State {
   swap_chain: wgpu::SwapChain,
   render_pipeline: wgpu::RenderPipeline,
   obj_model: model::Model,
+  world_model: model::Model,
   camera: camera::Camera,
   camera_controller: camera::CameraController,
   uniforms: camera::Uniforms,
@@ -100,7 +101,9 @@ impl State {
     });
 
     let camera = camera::Camera {
-      eye: (0.0, 5.0, -10.0).into(),
+      // 1031.2369, 66.481995, -3472.9282
+      // 0.0, 5.0, -10.0
+      eye: (1031.2369, 66.481995, -3472.9282).into(),
       target: (0.0, 0.0, 0.0).into(),
       up: cgmath::Vector3::unit_y(),
       aspect: sc_desc.width as f32 / sc_desc.height as f32,
@@ -185,8 +188,8 @@ impl State {
 
     let (obj_model, cmds) = model::Model::load(&device, &texture_bind_group_layout, "src/res/cube.obj").unwrap();
     queue.submit(&cmds);
-
-    let (world_model, cmds) = model::Model::load_from_doom_scene(&device, &texture_bind_group_layout, scene);
+    let (world_model, cmds) = model::Model::load_from_doom_scene(&device, &texture_bind_group_layout, scene).unwrap();
+    queue.submit(&cmds);
 
     let vs_src = include_str!("shader.vert");
     let fs_src = include_str!("shader.frag");
@@ -258,6 +261,7 @@ impl State {
       swap_chain,
       render_pipeline,
       obj_model,
+      world_model,
       camera,
       camera_controller,
       uniform_buffer,
@@ -337,11 +341,13 @@ impl State {
       });
 
       render_pass.set_pipeline(&self.render_pipeline);
-      render_pass.draw_model_instanced(
-        &self.obj_model,
-        0..self.instances.len() as u32,
-        &self.uniform_bind_group,
-      );
+      // render_pass.draw_model_instanced(
+      //   &self.obj_model,
+      //   0..self.instances.len() as u32,
+      //   &self.uniform_bind_group,
+      // );
+
+      render_pass.draw_model_instanced(&self.world_model, 0..2 as u32, &self.uniform_bind_group);
     }
 
     self.queue.submit(&[encoder.finish()]);
