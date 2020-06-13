@@ -126,6 +126,10 @@ impl Model {
       }
 
       let vertex_buffer = device.create_buffer_with_data(bytemuck::cast_slice(&vertices), wgpu::BufferUsage::VERTEX);
+
+      println!("{:?}", vertices.len());
+      println!("{:?}", m.mesh.indices.len());
+
       let index_buffer =
         device.create_buffer_with_data(bytemuck::cast_slice(&m.mesh.indices), wgpu::BufferUsage::INDEX);
 
@@ -160,6 +164,8 @@ impl Model {
     // for mat in obj_materials {
     // let diffuse_path = mat.diffuse_texture;
     let (diffuse_texture, cmds) = texture::Texture::load(&device, p)?;
+
+    println!("{:?}", diffuse_texture);
 
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
       layout,
@@ -279,6 +285,10 @@ impl Model {
             tex_coords: [1.0, 1.0],
             normal: [0.0, 0.0, -1.0],
           });
+
+          if linedef_index == 0 {
+            println!("{:?}", vertices);
+          }
 
           let indices = vec![0, 1, 2, 1, 3, 2];
           let vertex_buffer =

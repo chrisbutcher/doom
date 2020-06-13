@@ -102,14 +102,16 @@ impl State {
 
     let camera = camera::Camera {
       // 1031.2369, 66.481995, -3472.9282
+      // 1088.0, 0.0, -3680.0
       // 0.0, 5.0, -10.0
-      eye: (1031.2369, 66.481995, -3472.9282).into(),
-      target: (0.0, 0.0, 0.0).into(),
+      // eye: (0.0, 0.0, 0.0).into(),
+      eye: (1088.0, 0.0, -3680.0).into(),
+      target: (1088.0, 0.0, -3680.0).into(),
       up: cgmath::Vector3::unit_y(),
       aspect: sc_desc.width as f32 / sc_desc.height as f32,
       fovy: 45.0,
       znear: 0.1,
-      zfar: 100.0,
+      zfar: 1000000.0,
     };
     let camera_controller = camera::CameraController::new(0.2);
 
@@ -223,7 +225,7 @@ impl State {
       }),
       rasterization_state: Some(wgpu::RasterizationStateDescriptor {
         front_face: wgpu::FrontFace::Ccw,
-        cull_mode: wgpu::CullMode::Back,
+        cull_mode: wgpu::CullMode::None,
         depth_bias: 0,
         depth_bias_slope_scale: 0.0,
         depth_bias_clamp: 0.0,
@@ -341,13 +343,13 @@ impl State {
       });
 
       render_pass.set_pipeline(&self.render_pipeline);
-      // render_pass.draw_model_instanced(
-      //   &self.obj_model,
-      //   0..self.instances.len() as u32,
-      //   &self.uniform_bind_group,
-      // );
+      render_pass.draw_model_instanced(
+        &self.obj_model,
+        0..self.instances.len() as u32,
+        &self.uniform_bind_group,
+      );
 
-      render_pass.draw_model_instanced(&self.world_model, 0..2 as u32, &self.uniform_bind_group);
+      render_pass.draw_model_instanced(&self.world_model, 0..1 as u32, &self.uniform_bind_group);
     }
 
     self.queue.submit(&[encoder.finish()]);
