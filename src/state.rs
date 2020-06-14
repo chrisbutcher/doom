@@ -1,7 +1,8 @@
 use super::*;
 
-const NUM_INSTANCES_PER_ROW: u32 = 10;
+const NUM_INSTANCES_PER_ROW: u32 = 1;
 
+#[derive(Debug)]
 struct Instance {
   position: cgmath::Vector3<f32>,
   rotation: cgmath::Quaternion<f32>,
@@ -32,6 +33,7 @@ pub struct State {
   swap_chain: wgpu::SwapChain,
   render_pipeline: wgpu::RenderPipeline,
   obj_model: model::Model,
+  test_model: model::Model,
   world_model: model::Model,
   camera: camera::Camera,
   camera_controller: camera::CameraController,
@@ -104,9 +106,10 @@ impl State {
       // 1031.2369, 66.481995, -3472.9282
       // 1088.0, 0.0, -3680.0
       // 0.0, 5.0, -10.0
-      // eye: (0.0, 0.0, 0.0).into(),
-      eye: (1088.0, 0.0, -3680.0).into(),
-      target: (1088.0, 0.0, -3680.0).into(),
+      eye: (0.0, 5.0, -10.0).into(),
+      // eye: (1088.0, 0.0, -3680.0).into(),
+      target: (0.0, 0.0, 0.0).into(),
+      // target: (1088.0, 0.0, -3680.0).into(),
       up: cgmath::Vector3::unit_y(),
       aspect: sc_desc.width as f32 / sc_desc.height as f32,
       fovy: 45.0,
@@ -142,6 +145,8 @@ impl State {
         })
       })
       .collect::<Vec<_>>();
+
+    println!("{:?}", instances);
 
     let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
     let instance_buffer_size = instance_data.len() * std::mem::size_of::<cgmath::Matrix4<f32>>();
@@ -191,6 +196,9 @@ impl State {
     let (obj_model, cmds) = model::Model::load(&device, &texture_bind_group_layout, "src/res/cube.obj").unwrap();
     queue.submit(&cmds);
     let (world_model, cmds) = model::Model::load_from_doom_scene(&device, &texture_bind_group_layout, scene).unwrap();
+    queue.submit(&cmds);
+
+    let (test_model, cmds) = model::Model::load_v2(&device, &texture_bind_group_layout).unwrap();
     queue.submit(&cmds);
 
     let vs_src = include_str!("shader.vert");
@@ -264,6 +272,7 @@ impl State {
       render_pipeline,
       obj_model,
       world_model,
+      test_model,
       camera,
       camera_controller,
       uniform_buffer,
@@ -343,8 +352,14 @@ impl State {
       });
 
       render_pass.set_pipeline(&self.render_pipeline);
+      // render_pass.draw_model_instanced(
+      //   &self.obj_model,
+      //   0..self.instances.len() as u32,
+      //   &self.uniform_bind_group,
+      // );
+
       render_pass.draw_model_instanced(
-        &self.obj_model,
+        &self.test_model,
         0..self.instances.len() as u32,
         &self.uniform_bind_group,
       );
