@@ -33,7 +33,6 @@ pub struct State {
   swap_chain: wgpu::SwapChain,
   render_pipeline: wgpu::RenderPipeline,
   obj_model: model::Model,
-  test_model: model::Model,
   world_model: model::Model,
   camera: camera::Camera,
   camera_controller: camera::CameraController,
@@ -103,20 +102,15 @@ impl State {
     });
 
     let camera = camera::Camera {
-      // 1031.2369, 66.481995, -3472.9282
-      // 1088.0, 0.0, -3680.0
-      // 0.0, 5.0, -10.0
       eye: (0.0, 5.0, -10.0).into(),
-      // eye: (1088.0, 0.0, -3680.0).into(),
       target: (0.0, 0.0, 0.0).into(),
-      // target: (1088.0, 0.0, -3680.0).into(),
       up: cgmath::Vector3::unit_y(),
       aspect: sc_desc.width as f32 / sc_desc.height as f32,
       fovy: 45.0,
       znear: 0.1,
       zfar: 1000000.0,
     };
-    let camera_controller = camera::CameraController::new(0.2);
+    let camera_controller = camera::CameraController::new(10.0);
 
     let mut uniforms = camera::Uniforms::new();
     uniforms.update_view_proj(&camera);
@@ -126,27 +120,14 @@ impl State {
       wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
     );
 
-    const SPACE_BETWEEN: f32 = 3.0;
-    let instances = (0..NUM_INSTANCES_PER_ROW)
-      .flat_map(|z| {
-        (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-          let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-          let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-
-          let position = cgmath::Vector3 { x, y: 0.0, z };
-
-          let rotation = if position.is_zero() {
-            cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
-          } else {
-            cgmath::Quaternion::from_axis_angle(position.clone().normalize(), cgmath::Deg(45.0))
-          };
-
-          Instance { position, rotation }
-        })
-      })
-      .collect::<Vec<_>>();
-
-    println!("{:?}", instances);
+    let instances = vec![Instance {
+      position: cgmath::Vector3 {
+        x: -1088.0, // moved level to origin
+        y: 0.0,
+        z: 3680.0,
+      },
+      rotation: cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0)),
+    }];
 
     let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
     let instance_buffer_size = instance_data.len() * std::mem::size_of::<cgmath::Matrix4<f32>>();
@@ -196,9 +177,6 @@ impl State {
     let (obj_model, cmds) = model::Model::load(&device, &texture_bind_group_layout, "src/res/cube.obj").unwrap();
     queue.submit(&cmds);
     let (world_model, cmds) = model::Model::load_from_doom_scene(&device, &texture_bind_group_layout, scene).unwrap();
-    queue.submit(&cmds);
-
-    let (test_model, cmds) = model::Model::load_v2(&device, &texture_bind_group_layout).unwrap();
     queue.submit(&cmds);
 
     let vs_src = include_str!("shader.vert");
@@ -272,7 +250,6 @@ impl State {
       render_pipeline,
       obj_model,
       world_model,
-      test_model,
       camera,
       camera_controller,
       uniform_buffer,
@@ -358,11 +335,11 @@ impl State {
       //   &self.uniform_bind_group,
       // );
 
-      render_pass.draw_model_instanced(
-        &self.test_model,
-        0..self.instances.len() as u32,
-        &self.uniform_bind_group,
-      );
+      // render_pass.draw_model_instanced(
+      //   &self.test_model,
+      //   0..self.instances.len() as u32,
+      //   &self.uniform_bind_group,
+      // );
 
       render_pass.draw_model_instanced(&self.world_model, 0..1 as u32, &self.uniform_bind_group);
     }
