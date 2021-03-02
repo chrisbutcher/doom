@@ -1,0 +1,51 @@
+  // let mut builder = Path::builder();
+  // TODO: Have to find inner shapes, as well as outer shapes in floor/ceiling surfaces.
+  // find and build them separately using move_to, line_to.
+
+  // The tessellated geometry is ready to be uploaded to the GPU.
+
+  // NOTE: Naive gl fan triangulation, didn't really work well as expected.
+  //
+  //
+  // let mut sector_num: usize = 0;
+  // for sector in &map.sectors {
+  //   if let Some(verts_for_sector) = vert_tuples_by_sector_id.get(&sector_num) {
+  //     let mut x_sums = 0.0;
+  //     let mut y_sums = 0.0;
+
+  //     for v in verts_for_sector {
+  //       let x = v.0;
+  //       let y = v.1;
+
+  //       x_sums += x;
+  //       y_sums += y;
+  //     }
+
+  //     let num_verts = verts_for_sector.len() as f32;
+  //     let x_center = x_sums / num_verts;
+  //     let y_center = y_sums / num_verts;
+
+  //     // this floor
+
+  //     let mut floor_verts = Vec::<GLVertex>::new();
+  //     floor_verts.push(GLVertex {
+  //       position: [x_center, sector.floor_height as f32, y_center],
+  //       normal: [0.0, 1.0, 0.0],
+  //       tex_coords: [0.0, 0.0],
+  //     });
+
+  //     for v in verts_for_sector {
+  //       floor_verts.push(GLVertex {
+  //         position: [v.0, sector.floor_height as f32, v.1],
+  //         normal: [0.0, 1.0, 0.0],
+  //         tex_coords: [0.0, 0.0],
+  //       })
+  //     }
+
+  //     let floor_vertex_buffer = glium::vertex::VertexBuffer::new(&display, &floor_verts).unwrap();
+  //     floors.push(floor_vertex_buffer);
+  //   }
+  //   sector_num += 1;
+  // }
+
+  // END drawing sector floors
