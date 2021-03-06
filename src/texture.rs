@@ -2,6 +2,7 @@ use anyhow::*;
 use image::GenericImageView;
 use std::path::Path;
 
+#[derive(Debug)]
 pub struct Texture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
@@ -25,11 +26,7 @@ impl Texture {
         Self::from_image(device, queue, &img, label, is_normal_map)
     }
 
-    pub fn create_depth_texture(
-        device: &wgpu::Device,
-        sc_desc: &wgpu::SwapChainDescriptor,
-        label: &str,
-    ) -> Self {
+    pub fn create_depth_texture(device: &wgpu::Device, sc_desc: &wgpu::SwapChainDescriptor, label: &str) -> Self {
         let size = wgpu::Extent3d {
             width: sc_desc.width,
             height: sc_desc.height,
@@ -59,11 +56,7 @@ impl Texture {
             ..Default::default()
         });
 
-        Self {
-            texture,
-            view,
-            sampler,
-        }
+        Self { texture, view, sampler }
     }
 
     #[allow(dead_code)]
@@ -133,10 +126,6 @@ impl Texture {
             ..Default::default()
         });
 
-        Ok(Self {
-            texture,
-            view,
-            sampler,
-        })
+        Ok(Self { texture, view, sampler })
     }
 }

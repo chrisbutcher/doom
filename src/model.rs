@@ -59,6 +59,7 @@ impl Vertex for ModelVertex {
     }
 }
 
+#[derive(Debug)]
 pub struct Material {
     pub name: String,
     pub diffuse_texture: texture::Texture,
@@ -105,7 +106,7 @@ impl Material {
         }
     }
 }
-
+#[derive(Debug)]
 pub struct Mesh {
     pub name: String,
     pub vertex_buffer: wgpu::Buffer,
@@ -114,6 +115,7 @@ pub struct Mesh {
     pub material: usize,
 }
 
+#[derive(Debug)]
 pub struct Model {
     pub meshes: Vec<Mesh>,
     pub materials: Vec<Material>,
@@ -312,35 +314,82 @@ impl Model {
 
         vertices.push(ModelVertex {
             position: [vertex_1.x as f32, wall_height_bottom as f32, vertex_1.y as f32].into(),
-            tex_coords: [0.0, 0.0].into(),
-            normal: [0.0, 0.0, -1.0].into(),
+            tex_coords: [0.0, 1.0].into(),
+            normal: [0.0, 0.0, 1.0].into(),
             // We'll calculate these later
             tangent: [0.0; 3].into(),
             bitangent: [0.0; 3].into(),
         });
         vertices.push(ModelVertex {
             position: [vertex_2.x as f32, wall_height_bottom as f32, vertex_2.y as f32].into(),
-            tex_coords: [1.0, 0.0].into(),
-            normal: [0.0, 0.0, -1.0].into(),
+            tex_coords: [1.0, 1.0].into(),
+            normal: [0.0, 0.0, 1.0].into(),
             tangent: [0.0; 3].into(),
             bitangent: [0.0; 3].into(),
         });
         vertices.push(ModelVertex {
             position: [vertex_1.x as f32, wall_height_top as f32, vertex_1.y as f32].into(),
-            tex_coords: [0.0, 1.0].into(),
-            normal: [0.0, 0.0, -1.0].into(),
+            tex_coords: [0.0, 0.0].into(),
+            normal: [0.0, 0.0, 1.0].into(),
             tangent: [0.0; 3].into(),
             bitangent: [0.0; 3].into(),
         });
         vertices.push(ModelVertex {
             position: [vertex_2.x as f32, wall_height_top as f32, vertex_2.y as f32].into(),
-            tex_coords: [1.0, 1.0].into(),
-            normal: [0.0, 0.0, -1.0].into(),
+            tex_coords: [1.0, 0.0].into(),
+            normal: [0.0, 0.0, 1.0].into(),
             tangent: [0.0; 3].into(),
             bitangent: [0.0; 3].into(),
         });
 
+        // println!("{:?}", vertices);
+        // panic!("boom!");
+
         let indices = vec![0, 1, 2, 2, 1, 3];
+
+        // Do a bunch of normals calculation magic:
+        // https://sotrh.github.io/learn-wgpu/intermediate/tutorial11-normals/#the-tangent-and-the-bitangent
+        for c in indices.chunks(3) {
+            let v0 = vertices[c[0] as usize];
+            let v1 = vertices[c[1] as usize];
+            let v2 = vertices[c[2] as usize];
+
+            let pos0: cgmath::Vector3<_> = v0.position.into();
+            let pos1: cgmath::Vector3<_> = v1.position.into();
+            let pos2: cgmath::Vector3<_> = v2.position.into();
+
+            let uv0: cgmath::Vector2<_> = v0.tex_coords.into();
+            let uv1: cgmath::Vector2<_> = v1.tex_coords.into();
+            let uv2: cgmath::Vector2<_> = v2.tex_coords.into();
+
+            // Calculate the edges of the triangle
+            let delta_pos1 = pos1 - pos0;
+            let delta_pos2 = pos2 - pos0;
+
+            // This will give us a direction to calculate the
+            // tangent and bitangent
+            let delta_uv1 = uv1 - uv0;
+            let delta_uv2 = uv2 - uv0;
+
+            // Solving the following system of equations will
+            // give us the tangent and bitangent.
+            //     delta_pos1 = delta_uv1.x * T + delta_u.y * B
+            //     delta_pos2 = delta_uv2.x * T + delta_uv2.y * B
+            // Luckily, the place I found this equation provided
+            // the solution!
+            let r = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
+            let tangent = (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * r;
+            let bitangent = (delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * r;
+
+            // We'll use the same tangent/bitangent for each vertex in the triangle
+            vertices[c[0] as usize].tangent = tangent.into();
+            vertices[c[1] as usize].tangent = tangent.into();
+            vertices[c[2] as usize].tangent = tangent.into();
+
+            vertices[c[0] as usize].bitangent = bitangent.into();
+            vertices[c[1] as usize].bitangent = bitangent.into();
+            vertices[c[2] as usize].bitangent = bitangent.into();
+        }
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(&format!("Vertex Buffer (TODO name)")),
@@ -365,6 +414,23 @@ impl Model {
     ) -> Result<Self> {
         let mut meshes = Vec::new();
         let mut materials = Vec::new();
+
+        // Temporary. TODO load real textures as RGBA bytes via texture::Texture
+        let res_dir = std::path::Path::new(env!("OUT_DIR")).join("res");
+
+        let diffuse_path = String::from("cube-diffuse.jpg");
+        let diffuse_texture = texture::Texture::load(device, queue, res_dir.join(diffuse_path), false)?;
+
+        let normal_path = String::from("cube-normal.png");
+        let normal_texture = texture::Texture::load(device, queue, res_dir.join(normal_path), true)?;
+
+        materials.push(Material::new(
+            device,
+            "Cube material",
+            diffuse_texture,
+            normal_texture,
+            layout,
+        ));
 
         for line in &scene.map.linedefs {
             let start_vertex_index = line.start_vertex;
@@ -407,6 +473,8 @@ impl Model {
                 {
                     let texture_name = fside.name_of_middle_texture.clone().unwrap();
 
+                    println!("Loaded sidedef with texture named: {}", texture_name);
+
                     // TODO: Do this more efficiently, with Hashmap etc.
                     let texture = scene.textures.iter().find(|&t| t.name == texture_name).unwrap();
 
@@ -423,7 +491,7 @@ impl Model {
                         vertex_buffer,
                         index_buffer,
                         num_elements: 6,
-                        material: m.mesh.material_id.unwrap_or(0),
+                        material: 0, // TODO
                     });
                 }
             }

@@ -119,7 +119,8 @@ fn create_render_pipeline(
     }),
     rasterization_state: Some(wgpu::RasterizationStateDescriptor {
       front_face: wgpu::FrontFace::Ccw,
-      cull_mode: wgpu::CullMode::Back,
+      // cull_mode: wgpu::CullMode::Back,
+      cull_mode: wgpu::CullMode::None, // todo
       depth_bias: 0,
       depth_bias_slope_scale: 0.0,
       depth_bias_clamp: 0.0,
@@ -176,6 +177,7 @@ pub struct State {
   // NEW!
   mouse_pressed: bool,
   scene: Scene,
+  level_model: model::Model,
 }
 
 impl State {
@@ -254,9 +256,10 @@ impl State {
       label: Some("texture_bind_group_layout"),
     });
 
-    let camera = camera::Camera::new((0.0, 5.0, 10.0), cgmath::Deg(-90.0), cgmath::Deg(-20.0));
-    let projection = camera::Projection::new(sc_desc.width, sc_desc.height, cgmath::Deg(45.0), 0.1, 100.0);
-    let camera_controller = camera::CameraController::new(4.0, 0.4);
+    // let camera = camera::Camera::new((0.0, 5.0, 10.0), cgmath::Deg(-90.0), cgmath::Deg(0.0));
+    let camera = camera::Camera::new((0.0, 0.0, 0.0), cgmath::Deg(0.0), cgmath::Deg(0.0));
+    let projection = camera::Projection::new(sc_desc.width, sc_desc.height, cgmath::Deg(45.0), 0.1, 100000.0);
+    let camera_controller = camera::CameraController::new(400.0, 4.4);
 
     let mut uniforms = Uniforms::new();
     uniforms.update_view_proj(&camera, &projection);
@@ -442,6 +445,7 @@ impl State {
       // NEW!
       mouse_pressed: false,
       scene: scene,
+      level_model,
     }
   }
 
@@ -537,10 +541,18 @@ impl State {
       render_pass.set_pipeline(&self.light_render_pipeline);
       render_pass.draw_light_model(&self.obj_model, &self.uniform_bind_group, &self.light_bind_group);
 
+      // render_pass.set_pipeline(&self.render_pipeline);
+      // render_pass.draw_model_instanced(
+      //   &self.obj_model,
+      //   0..self.instances.len() as u32,
+      //   &self.uniform_bind_group,
+      //   &self.light_bind_group,
+      // );
+
       render_pass.set_pipeline(&self.render_pipeline);
       render_pass.draw_model_instanced(
-        &self.obj_model,
-        0..self.instances.len() as u32,
+        &self.level_model,
+        0..1 as u32,
         &self.uniform_bind_group,
         &self.light_bind_group,
       );
