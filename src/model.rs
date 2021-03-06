@@ -1,3 +1,5 @@
+pub use super::*;
+
 use anyhow::*;
 use std::ops::Range;
 use std::path::Path;
@@ -235,6 +237,196 @@ impl Model {
                 num_elements: m.mesh.indices.len() as u32,
                 material: m.mesh.material_id.unwrap_or(0),
             });
+        }
+
+        Ok(Self { meshes, materials })
+    }
+
+    // fn build_wall_quad(
+    //     vertex_1: &MapVertex,
+    //     vertex_2: &MapVertex,
+    //     wall_height_bottom: f32,
+    //     wall_height_top: f32,
+    //     texture: Option<&WallTexture>,
+    // ) -> [GLVertex; 4] {
+    //     // C *------* D
+    //     //   | \  2 |
+    //     //   |  \   |
+    //     //   | 1 \  |
+    //     //   |    \ |
+    //     // A *------* B
+
+    //     // https://en.wikipedia.org/wiki/Triangle_strip -- only 4 verts needed to draw two triangles.
+
+    //     let tex_coords = if texture.is_some() {
+    //         // TODO: Scale these UV coordinates, based on width, height of quad
+    //         [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]
+    //     } else {
+    //         [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]
+    //     };
+
+    //     // TODO: Calculate actual quad normals... right now, they're all negative in the z direction
+    //     [
+    //         GLVertex {
+    //             // A
+    //             position: [vertex_1.x as f32, wall_height_bottom as f32, vertex_1.y as f32],
+    //             normal: [0.0, 0.0, -1.0],
+    //             tex_coords: tex_coords[0],
+    //         },
+    //         GLVertex {
+    //             // B
+    //             position: [vertex_2.x as f32, wall_height_bottom as f32, vertex_2.y as f32],
+    //             normal: [0.0, 0.0, -1.0],
+    //             tex_coords: tex_coords[1],
+    //         },
+    //         GLVertex {
+    //             // C
+    //             position: [vertex_1.x as f32, wall_height_top as f32, vertex_1.y as f32],
+    //             normal: [0.0, 0.0, -1.0],
+    //             tex_coords: tex_coords[2],
+    //         },
+    //         GLVertex {
+    //             // D
+    //             position: [vertex_2.x as f32, wall_height_top as f32, vertex_2.y as f32],
+    //             normal: [0.0, 0.0, -1.0],
+    //             tex_coords: tex_coords[3],
+    //         },
+    //     ]
+    // }
+
+    pub fn build_wall_quad_mesh(
+        device: &wgpu::Device,
+        vertex_1: &maps::MapVertex,
+        vertex_2: &maps::MapVertex,
+        wall_height_bottom: f32,
+        wall_height_top: f32,
+    ) -> (wgpu::Buffer, wgpu::Buffer) {
+        //     // C *------* D
+        //     //   | \  2 |
+        //     //   |  \   |
+        //     //   | 1 \  |
+        //     //   |    \ |
+        //     // A *------* B
+
+        let mut vertices = Vec::new();
+
+        vertices.push(ModelVertex {
+            position: [vertex_1.x as f32, wall_height_bottom as f32, vertex_1.y as f32].into(),
+            tex_coords: [0.0, 0.0].into(),
+            normal: [0.0, 0.0, -1.0].into(),
+            // We'll calculate these later
+            tangent: [0.0; 3].into(),
+            bitangent: [0.0; 3].into(),
+        });
+        vertices.push(ModelVertex {
+            position: [vertex_2.x as f32, wall_height_bottom as f32, vertex_2.y as f32].into(),
+            tex_coords: [1.0, 0.0].into(),
+            normal: [0.0, 0.0, -1.0].into(),
+            tangent: [0.0; 3].into(),
+            bitangent: [0.0; 3].into(),
+        });
+        vertices.push(ModelVertex {
+            position: [vertex_1.x as f32, wall_height_top as f32, vertex_1.y as f32].into(),
+            tex_coords: [0.0, 1.0].into(),
+            normal: [0.0, 0.0, -1.0].into(),
+            tangent: [0.0; 3].into(),
+            bitangent: [0.0; 3].into(),
+        });
+        vertices.push(ModelVertex {
+            position: [vertex_2.x as f32, wall_height_top as f32, vertex_2.y as f32].into(),
+            tex_coords: [1.0, 1.0].into(),
+            normal: [0.0, 0.0, -1.0].into(),
+            tangent: [0.0; 3].into(),
+            bitangent: [0.0; 3].into(),
+        });
+
+        let indices = vec![0, 1, 2, 2, 1, 3];
+
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(&format!("Vertex Buffer (TODO name)")),
+            contents: bytemuck::cast_slice(&vertices),
+            usage: wgpu::BufferUsage::VERTEX,
+        });
+
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(&format!("Index Buffer (TODO name)")),
+            contents: bytemuck::cast_slice(&indices),
+            usage: wgpu::BufferUsage::INDEX,
+        });
+
+        (vertex_buffer, index_buffer)
+    }
+
+    pub fn load_scene(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        layout: &wgpu::BindGroupLayout,
+        scene: &Scene,
+    ) -> Result<Self> {
+        let mut meshes = Vec::new();
+        let mut materials = Vec::new();
+
+        for line in &scene.map.linedefs {
+            let start_vertex_index = line.start_vertex;
+            let end_vertex_index = line.end_vertex;
+
+            let start_vertex = &scene.map.vertexes[start_vertex_index];
+            let end_vertex = &scene.map.vertexes[end_vertex_index];
+
+            let mut front_sector_floor_height: f32 = -1.0;
+            let mut front_sector_ceiling_height: f32 = -1.0;
+            let mut back_sector_floor_height: f32 = -1.0;
+            let mut back_sector_ceiling_height: f32 = -1.0;
+
+            let front_sidedef = if let Some(front_sidedef_index) = line.front_sidedef_index {
+                let front_sidedef = &scene.map.sidedefs[front_sidedef_index];
+                let front_sector = &scene.map.sectors[front_sidedef.sector_facing];
+                front_sector_floor_height = front_sector.floor_height as f32;
+                front_sector_ceiling_height = front_sector.ceiling_height as f32;
+
+                Some(front_sidedef)
+            } else {
+                None
+            };
+
+            let back_sidedef = if let Some(back_sidedef_index) = line.back_sidedef_index {
+                let back_sidedef = &scene.map.sidedefs[back_sidedef_index];
+                let back_sector = &scene.map.sectors[back_sidedef.sector_facing];
+                back_sector_floor_height = back_sector.floor_height as f32;
+                back_sector_ceiling_height = back_sector.ceiling_height as f32;
+
+                Some(back_sidedef)
+            } else {
+                None
+            };
+
+            if let Some(fside) = front_sidedef {
+                if fside.name_of_middle_texture.is_some()
+                    && fside.name_of_upper_texture.is_none()
+                    && fside.name_of_lower_texture.is_none()
+                {
+                    let texture_name = fside.name_of_middle_texture.clone().unwrap();
+
+                    // TODO: Do this more efficiently, with Hashmap etc.
+                    let texture = scene.textures.iter().find(|&t| t.name == texture_name).unwrap();
+
+                    let (vertex_buffer, index_buffer) = Model::build_wall_quad_mesh(
+                        &device,
+                        start_vertex,
+                        end_vertex,
+                        front_sector_floor_height,
+                        front_sector_ceiling_height,
+                    );
+
+                    meshes.push(Mesh {
+                        name: String::from("Some wall"),
+                        vertex_buffer,
+                        index_buffer,
+                        num_elements: 6,
+                        material: m.mesh.material_id.unwrap_or(0),
+                    });
+                }
+            }
         }
 
         Ok(Self { meshes, materials })

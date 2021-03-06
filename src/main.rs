@@ -61,7 +61,7 @@ pub struct Scene {
     patch_names: Vec<wad_graphics::Patch>,
     lumps: Vec<lumps::Lump>,
     palette: Vec<wad_graphics::PaletteColor>,
-    _colormap: wad_graphics::Colormap,
+    colormap: wad_graphics::Colormap,
 }
 
 fn main() {
@@ -86,10 +86,8 @@ fn main() {
         patch_names: patch_names,
         lumps: lumps,
         palette: palette,
-        _colormap: colormap,
+        colormap: colormap,
     };
-
-    //
 
     env_logger::init();
     let event_loop = EventLoop::new();
@@ -99,7 +97,7 @@ fn main() {
         .build(&event_loop)
         .unwrap();
     use futures::executor::block_on;
-    let mut state = block_on(renderer::State::new(&window, scene)); // NEW!
+    let mut state = block_on(renderer::State::new(&window, scene));
     let mut last_render_time = std::time::Instant::now();
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
@@ -111,7 +109,6 @@ fn main() {
             } => {
                 state.input(event);
             }
-            // UPDATED!
             Event::WindowEvent {
                 ref event,
                 window_id,
@@ -137,7 +134,6 @@ fn main() {
                     _ => {}
                 }
             }
-            // UPDATED!
             Event::RedrawRequested(_) => {
                 let now = std::time::Instant::now();
                 let dt = now - last_render_time;

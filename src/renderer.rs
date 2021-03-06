@@ -254,7 +254,6 @@ impl State {
       label: Some("texture_bind_group_layout"),
     });
 
-    // UPDATED!
     let camera = camera::Camera::new((0.0, 5.0, 10.0), cgmath::Deg(-90.0), cgmath::Deg(-20.0));
     let projection = camera::Projection::new(sc_desc.width, sc_desc.height, cgmath::Deg(45.0), 0.1, 100.0);
     let camera_controller = camera::CameraController::new(4.0, 0.4);
@@ -321,6 +320,8 @@ impl State {
     let now = std::time::Instant::now();
     let obj_model = model::Model::load(&device, &queue, &texture_bind_group_layout, res_dir.join("cube.obj")).unwrap();
     println!("Elapsed (Original): {:?}", std::time::Instant::now() - now);
+
+    let level_model = model::Model::load_scene(&device, &queue, &texture_bind_group_layout, &scene).unwrap();
 
     let light = Light {
       position: [2.0, 2.0, 2.0],

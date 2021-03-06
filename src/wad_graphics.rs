@@ -55,11 +55,11 @@ pub struct WallPatch {
 
 #[derive(Debug, Clone)]
 pub struct WallTexture {
-  name: String,
-  masked: bool,
-  width: i16,
-  height: i16,
-  patches: Vec<WallPatch>,
+  pub name: String,
+  pub masked: bool,
+  pub width: i16,
+  pub height: i16,
+  pub patches: Vec<WallPatch>,
 }
 
 pub fn picture_to_rgba_bytes(picture: &Picture, palette: &std::vec::Vec<PaletteColor>) -> Vec<u8> {
