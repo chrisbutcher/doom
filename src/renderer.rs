@@ -2,7 +2,7 @@ pub use super::*;
 
 use model::{DrawLight, DrawModel, Vertex};
 
-const NUM_INSTANCES_PER_ROW: u32 = 10;
+const NUM_INSTANCES_PER_ROW: u32 = 1;
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -256,9 +256,8 @@ impl State {
       label: Some("texture_bind_group_layout"),
     });
 
-    // let camera = camera::Camera::new((0.0, 5.0, 10.0), cgmath::Deg(-90.0), cgmath::Deg(0.0));
-    let camera = camera::Camera::new((0.0, 0.0, 0.0), cgmath::Deg(0.0), cgmath::Deg(0.0));
-    let projection = camera::Projection::new(sc_desc.width, sc_desc.height, cgmath::Deg(45.0), 0.1, 100000.0);
+    let camera = camera::Camera::new((1062.0, 50.0, -3635.0), cgmath::Deg(90.0), cgmath::Deg(0.0));
+    let projection = camera::Projection::new(sc_desc.width, sc_desc.height, cgmath::Deg(90.0), 0.1, 100000.0);
     let camera_controller = camera::CameraController::new(400.0, 4.4);
 
     let mut uniforms = Uniforms::new();
@@ -270,25 +269,10 @@ impl State {
       usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
     });
 
-    const SPACE_BETWEEN: f32 = 3.0;
-    let instances = (0..NUM_INSTANCES_PER_ROW)
-      .flat_map(|z| {
-        (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-          let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-          let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-
-          let position = cgmath::Vector3 { x, y: 0.0, z };
-
-          let rotation = if position.is_zero() {
-            cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
-          } else {
-            cgmath::Quaternion::from_axis_angle(position.clone().normalize(), cgmath::Deg(45.0))
-          };
-
-          Instance { position, rotation }
-        })
-      })
-      .collect::<Vec<_>>();
+    let instances = vec![Instance {
+      position: cgmath::Vector3 { x: 0.0, y: 0.0, z: 0.0 },
+      rotation: cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0)),
+    }];
 
     let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
     let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -466,7 +450,7 @@ impl State {
         virtual_keycode: Some(key),
         state,
         ..
-      }) => self.camera_controller.process_keyboard(*key, *state),
+      }) => self.camera_controller.process_keyboard(*key, *state, &self.camera),
       DeviceEvent::MouseWheel { delta, .. } => {
         self.camera_controller.process_scroll(delta);
         true
@@ -541,13 +525,15 @@ impl State {
       render_pass.set_pipeline(&self.light_render_pipeline);
       render_pass.draw_light_model(&self.obj_model, &self.uniform_bind_group, &self.light_bind_group);
 
-      // render_pass.set_pipeline(&self.render_pipeline);
-      // render_pass.draw_model_instanced(
-      //   &self.obj_model,
-      //   0..self.instances.len() as u32,
-      //   &self.uniform_bind_group,
-      //   &self.light_bind_group,
-      // );
+      if false {
+        render_pass.set_pipeline(&self.render_pipeline);
+        render_pass.draw_model_instanced(
+          &self.obj_model,
+          0..self.instances.len() as u32,
+          &self.uniform_bind_group,
+          &self.light_bind_group,
+        );
+      }
 
       render_pass.set_pipeline(&self.render_pipeline);
       render_pass.draw_model_instanced(
