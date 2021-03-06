@@ -418,8 +418,12 @@ impl Model {
         // Temporary. TODO load real textures as RGBA bytes via texture::Texture
         let res_dir = std::path::Path::new(env!("OUT_DIR")).join("res");
 
-        let diffuse_path = String::from("cube-diffuse.jpg");
-        let diffuse_texture = texture::Texture::load(device, queue, res_dir.join(diffuse_path), false)?;
+        // let diffuse_path = String::from("cube-diffuse.jpg");
+        // let diffuse_texture = texture::Texture::load(device, queue, res_dir.join(diffuse_path), false)?;
+
+        let (example_doom_texture, (w, h)) = wad_graphics::texture_to_gl_texture(scene, "STARTAN3");
+
+        let diffuse_texture = texture::Texture::from_image(device, queue, &example_doom_texture, None, false).unwrap();
 
         let normal_path = String::from("cube-normal.png");
         let normal_texture = texture::Texture::load(device, queue, res_dir.join(normal_path), true)?;

@@ -1,5 +1,7 @@
 pub use super::*;
 
+use image::DynamicImage;
+
 #[derive(Debug, Clone)]
 pub struct Colormap {
   pub palette_indexes: Vec<usize>,
@@ -14,43 +16,43 @@ pub struct PaletteColor {
 
 #[derive(Debug, Clone)]
 pub struct Flat {
-  pixels: Vec<usize>,
+  pub pixels: Vec<usize>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Picture {
   pub width: u16,
   pub height: u16,
-  leftoffset: u16,
-  topoffset: u16,
-  posts: Vec<PicturePost>,
+  pub leftoffset: u16,
+  pub topoffset: u16,
+  pub posts: Vec<PicturePost>,
   pub lump_name: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct PictureSpan {
-  topdelta: usize,
-  length: u8,
-  pixels: Vec<usize>,
-  last_span_pixel_count: usize,
-  last_span_topdelta: usize,
+  pub topdelta: usize,
+  pub length: u8,
+  pub pixels: Vec<usize>,
+  pub last_span_pixel_count: usize,
+  pub last_span_topdelta: usize,
 }
 
 #[derive(Debug, Clone)]
 pub struct PicturePost {
-  pixel_spans: Vec<PictureSpan>,
+  pub pixel_spans: Vec<PictureSpan>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Patch {
-  name: String,
+  pub name: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct WallPatch {
-  originx: i16,
-  originy: i16,
-  patch_number: usize,
+  pub originx: i16,
+  pub originy: i16,
+  pub patch_number: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +62,48 @@ pub struct WallTexture {
   pub width: i16,
   pub height: i16,
   pub patches: Vec<WallPatch>,
+}
+
+pub fn texture_to_gl_texture(scene: &Scene, texture_name: &str) -> (image::DynamicImage, (i16, i16)) {
+  println!("[texture_to_gl_texture] Loading texture: {}", texture_name);
+
+  let texture = scene.textures.iter().find(|&t| t.name == texture_name).unwrap();
+  let mut imgbuf = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::new(texture.width as u32, texture.height as u32);
+
+  for patch in &texture.patches {
+    let fetched_patch = &scene.patch_names[patch.patch_number];
+
+    let patch_picture = wad_graphics::load_picture_from_wad(&scene.wad_file, &scene.lumps, &fetched_patch.name);
+
+    let patch_bytes = wad_graphics::picture_to_rgba_bytes(&patch_picture, &scene.palette);
+
+    let mut patch_x: i32 = 0;
+    let mut patch_y: i32 = 0;
+
+    for raw_pixel in patch_bytes.chunks(4) {
+      // println!("patch_x: {}, patch_y: {}", patch_x, patch_y);
+
+      let target_x = patch_x + patch.originx as i32;
+      let target_y = patch_y + patch.originy as i32;
+
+      // TODO: Deal with negative patch offsets??
+
+      if target_x < texture.width as i32 && target_y < texture.height as i32 && target_x >= 0 && target_y >= 0 {
+        imgbuf.put_pixel(
+          target_x as u32,
+          target_y as u32,
+          image::Rgba([raw_pixel[0], raw_pixel[1], raw_pixel[2], raw_pixel[3]]),
+        );
+      }
+      patch_x += 1;
+      if patch_x >= patch_picture.width as i32 {
+        patch_x = 0;
+        patch_y += 1;
+      }
+    }
+  }
+
+  (DynamicImage::ImageRgba8(imgbuf), (texture.width, texture.height))
 }
 
 pub fn picture_to_rgba_bytes(picture: &Picture, palette: &std::vec::Vec<PaletteColor>) -> Vec<u8> {
