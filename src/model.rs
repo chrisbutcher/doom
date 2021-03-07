@@ -364,6 +364,39 @@ impl Model {
         diffuse_texture
     }
 
+    pub fn store_texture_as_material(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        layout: &wgpu::BindGroupLayout,
+        scene: &Scene,
+        texture_name_to_material_index: &mut HashMap<String, usize>,
+        texture_name: &str,
+        materials: &mut Vec<Material>,
+        normal_texture: Rc<texture::Texture>,
+    ) -> usize {
+        let material_index = if texture_name_to_material_index.contains_key(texture_name) {
+            *texture_name_to_material_index.get(texture_name).unwrap()
+        } else {
+            let diffuse_texture = Model::load_diffuse_texture_by_name(device, queue, scene, &texture_name);
+
+            materials.push(Material::new(
+                device,
+                &texture_name,
+                diffuse_texture,
+                normal_texture.clone(),
+                layout,
+            ));
+
+            let stored_index = materials.len() - 1;
+
+            texture_name_to_material_index.insert(String::from(texture_name), stored_index);
+
+            stored_index
+        };
+
+        material_index
+    }
+
     pub fn load_scene(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -372,20 +405,11 @@ impl Model {
     ) -> Result<Self> {
         let mut meshes = Vec::new();
         let mut materials = Vec::new();
-
-        // Temporary. TODO load real textures as RGBA bytes via texture::Texture
-        let res_dir = std::path::Path::new(env!("OUT_DIR")).join("res");
-
-        // let diffuse_path = String::from("cube-diffuse.jpg");
-        // let diffuse_texture = texture::Texture::load(device, queue, res_dir.join(diffuse_path), false)?;
-
-        // let (example_doom_texture, (width, height)) = wad_graphics::texture_to_gl_texture(scene, "STARTAN3");
-        // let diffuse_texture = texture::Texture::from_image(device, queue, &example_doom_texture, None, false).unwrap();
-
-        let normal_path = String::from("flat-normal.png");
-        let normal_texture = Rc::new(texture::Texture::load(device, queue, res_dir.join(normal_path), true)?);
-
         let mut texture_name_to_material_index: HashMap<String, usize> = HashMap::new();
+
+        let res_dir = std::path::Path::new(env!("OUT_DIR")).join("res");
+        let normal_path = String::from("flat-normal.png"); // TODO: Try generating normal maps from diffuse?
+        let normal_texture = Rc::new(texture::Texture::load(device, queue, res_dir.join(normal_path), true)?);
 
         for line in &scene.map.linedefs {
             let start_vertex_index = line.start_vertex;
@@ -433,25 +457,16 @@ impl Model {
                     // TODO: Do this more efficiently, with Hashmap etc.
                     // let texture = scene.textures.iter().find(|&t| t.name == texture_name).unwrap();
 
-                    let material_index = if texture_name_to_material_index.contains_key(&texture_name) {
-                        *texture_name_to_material_index.get(&texture_name).unwrap()
-                    } else {
-                        let diffuse_texture = Model::load_diffuse_texture_by_name(device, queue, scene, &texture_name);
-
-                        materials.push(Material::new(
-                            device,
-                            "Cube material",
-                            diffuse_texture,
-                            normal_texture.clone(),
-                            layout,
-                        ));
-
-                        let stored_index = materials.len() - 1;
-
-                        texture_name_to_material_index.insert(texture_name, stored_index);
-
-                        stored_index
-                    };
+                    let material_index = Model::store_texture_as_material(
+                        device,
+                        queue,
+                        layout,
+                        scene,
+                        &mut texture_name_to_material_index,
+                        &texture_name,
+                        &mut materials,
+                        normal_texture.clone(),
+                    );
 
                     let (vertex_buffer, index_buffer) = Model::build_wall_quad_mesh(
                         &device,
