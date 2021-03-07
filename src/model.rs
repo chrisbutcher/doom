@@ -374,16 +374,11 @@ impl Model {
             let start_vertex = &scene.map.vertexes[start_vertex_index];
             let end_vertex = &scene.map.vertexes[end_vertex_index];
 
-            let front_sector_floor_height: f32;
-            let front_sector_ceiling_height: f32;
-            let back_sector_floor_height: f32;
-            let back_sector_ceiling_height: f32;
-
             if let Some(front_sidedef_index) = line.front_sidedef_index {
                 let front_sidedef = &scene.map.sidedefs[front_sidedef_index];
                 let front_sector = &scene.map.sectors[front_sidedef.sector_facing];
-                front_sector_floor_height = front_sector.floor_height as f32;
-                front_sector_ceiling_height = front_sector.ceiling_height as f32;
+                let front_sector_floor_height = front_sector.floor_height as f32;
+                let front_sector_ceiling_height = front_sector.ceiling_height as f32;
 
                 if front_sidedef.name_of_middle_texture.is_some()
                     && front_sidedef.name_of_upper_texture.is_none()
@@ -414,8 +409,8 @@ impl Model {
             if let Some(back_sidedef_index) = line.back_sidedef_index {
                 let back_sidedef = &scene.map.sidedefs[back_sidedef_index];
                 let back_sector = &scene.map.sectors[back_sidedef.sector_facing];
-                back_sector_floor_height = back_sector.floor_height as f32;
-                back_sector_ceiling_height = back_sector.ceiling_height as f32;
+                let back_sector_floor_height = back_sector.floor_height as f32;
+                let back_sector_ceiling_height = back_sector.ceiling_height as f32;
 
                 if back_sidedef.name_of_middle_texture.is_some()
                     && back_sidedef.name_of_upper_texture.is_none()
