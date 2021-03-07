@@ -244,7 +244,7 @@ impl Model {
         Ok(Self { meshes, materials })
     }
 
-    pub fn build_wall_quad_mesh(
+    pub fn build_wall_vertices_indices(
         device: &wgpu::Device,
         vertex_1: &maps::MapVertex,
         vertex_2: &maps::MapVertex,
@@ -352,57 +352,13 @@ impl Model {
         (vertex_buffer, index_buffer)
     }
 
-    pub fn load_diffuse_texture_by_name(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        scene: &Scene,
-        texture_name: &str,
-    ) -> texture::Texture {
-        let (example_doom_texture, (width, height)) = wad_graphics::texture_to_gl_texture(scene, texture_name);
-        let diffuse_texture = texture::Texture::from_image(device, queue, &example_doom_texture, None, false).unwrap();
-
-        diffuse_texture
-    }
-
-    pub fn store_texture_as_material(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        layout: &wgpu::BindGroupLayout,
-        scene: &Scene,
-        texture_name_to_material_index: &mut HashMap<String, usize>,
-        texture_name: &str,
-        materials: &mut Vec<Material>,
-        normal_texture: Rc<texture::Texture>,
-    ) -> usize {
-        let material_index = if texture_name_to_material_index.contains_key(texture_name) {
-            *texture_name_to_material_index.get(texture_name).unwrap()
-        } else {
-            let diffuse_texture = Model::load_diffuse_texture_by_name(device, queue, scene, &texture_name);
-
-            materials.push(Material::new(
-                device,
-                &texture_name,
-                diffuse_texture,
-                normal_texture.clone(),
-                layout,
-            ));
-
-            let stored_index = materials.len() - 1;
-
-            texture_name_to_material_index.insert(String::from(texture_name), stored_index);
-
-            stored_index
-        };
-
-        material_index
-    }
-
     pub fn load_scene(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         layout: &wgpu::BindGroupLayout,
         scene: &Scene,
     ) -> Result<Self> {
+        let mut wall_builder = WallBuilder::new(device, queue, layout, scene);
         let mut meshes = Vec::new();
         let mut materials = Vec::new();
         let mut texture_name_to_material_index: HashMap<String, usize> = HashMap::new();
@@ -418,76 +374,167 @@ impl Model {
             let start_vertex = &scene.map.vertexes[start_vertex_index];
             let end_vertex = &scene.map.vertexes[end_vertex_index];
 
-            let mut front_sector_floor_height: f32 = -1.0;
-            let mut front_sector_ceiling_height: f32 = -1.0;
-            let mut back_sector_floor_height: f32 = -1.0;
-            let mut back_sector_ceiling_height: f32 = -1.0;
+            let front_sector_floor_height: f32;
+            let front_sector_ceiling_height: f32;
+            let back_sector_floor_height: f32;
+            let back_sector_ceiling_height: f32;
 
-            let front_sidedef = if let Some(front_sidedef_index) = line.front_sidedef_index {
+            if let Some(front_sidedef_index) = line.front_sidedef_index {
                 let front_sidedef = &scene.map.sidedefs[front_sidedef_index];
                 let front_sector = &scene.map.sectors[front_sidedef.sector_facing];
                 front_sector_floor_height = front_sector.floor_height as f32;
                 front_sector_ceiling_height = front_sector.ceiling_height as f32;
 
-                Some(front_sidedef)
-            } else {
-                None
-            };
-
-            let back_sidedef = if let Some(back_sidedef_index) = line.back_sidedef_index {
-                let back_sidedef = &scene.map.sidedefs[back_sidedef_index];
-                let back_sector = &scene.map.sectors[back_sidedef.sector_facing];
-                back_sector_floor_height = back_sector.floor_height as f32;
-                back_sector_ceiling_height = back_sector.ceiling_height as f32;
-
-                Some(back_sidedef)
-            } else {
-                None
-            };
-
-            if let Some(fside) = front_sidedef {
-                if fside.name_of_middle_texture.is_some()
-                    && fside.name_of_upper_texture.is_none()
-                    && fside.name_of_lower_texture.is_none()
+                if front_sidedef.name_of_middle_texture.is_some()
+                    && front_sidedef.name_of_upper_texture.is_none()
+                    && front_sidedef.name_of_lower_texture.is_none()
                 {
-                    let texture_name = fside.name_of_middle_texture.clone().unwrap();
+                    let texture_name = front_sidedef.name_of_middle_texture.clone().unwrap();
 
-                    println!("Loaded sidedef with texture named: {}", texture_name);
-
-                    // TODO: Do this more efficiently, with Hashmap etc.
-                    // let texture = scene.textures.iter().find(|&t| t.name == texture_name).unwrap();
-
-                    let material_index = Model::store_texture_as_material(
+                    let (vertex_buffer, index_buffer) = Model::build_wall_vertices_indices(
                         device,
-                        queue,
-                        layout,
-                        scene,
-                        &mut texture_name_to_material_index,
-                        &texture_name,
-                        &mut materials,
-                        normal_texture.clone(),
-                    );
-
-                    let (vertex_buffer, index_buffer) = Model::build_wall_quad_mesh(
-                        &device,
                         start_vertex,
                         end_vertex,
                         front_sector_floor_height,
                         front_sector_ceiling_height,
                     );
 
-                    meshes.push(Mesh {
-                        name: String::from("Some wall"),
+                    wall_builder.build_wall_mesh(
+                        &texture_name,
+                        &mut materials,
+                        normal_texture.clone(),
+                        &mut texture_name_to_material_index,
                         vertex_buffer,
                         index_buffer,
-                        num_elements: 6,
-                        material: material_index,
-                    });
+                        &mut meshes,
+                    );
+                }
+            };
+
+            if let Some(back_sidedef_index) = line.back_sidedef_index {
+                let back_sidedef = &scene.map.sidedefs[back_sidedef_index];
+                let back_sector = &scene.map.sectors[back_sidedef.sector_facing];
+                back_sector_floor_height = back_sector.floor_height as f32;
+                back_sector_ceiling_height = back_sector.ceiling_height as f32;
+
+                if back_sidedef.name_of_middle_texture.is_some()
+                    && back_sidedef.name_of_upper_texture.is_none()
+                    && back_sidedef.name_of_lower_texture.is_none()
+                {
+                    let texture_name = back_sidedef.name_of_middle_texture.clone().unwrap();
+
+                    let (vertex_buffer, index_buffer) = Model::build_wall_vertices_indices(
+                        device,
+                        end_vertex,
+                        start_vertex,
+                        back_sector_floor_height,
+                        back_sector_ceiling_height,
+                    );
+
+                    wall_builder.build_wall_mesh(
+                        &texture_name,
+                        &mut materials,
+                        normal_texture.clone(),
+                        &mut texture_name_to_material_index,
+                        vertex_buffer,
+                        index_buffer,
+                        &mut meshes,
+                    );
                 }
             }
         }
 
         Ok(Self { meshes, materials })
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct WallBuilder<'a> {
+    device: &'a wgpu::Device,
+    queue: &'a wgpu::Queue,
+    layout: &'a wgpu::BindGroupLayout,
+    scene: &'a Scene,
+}
+
+impl<'a> WallBuilder<'a> {
+    pub fn new(
+        device: &'a wgpu::Device,
+        queue: &'a wgpu::Queue,
+        layout: &'a wgpu::BindGroupLayout,
+        scene: &'a Scene,
+    ) -> WallBuilder<'a> {
+        WallBuilder {
+            device,
+            queue,
+            layout,
+            scene,
+        }
+    }
+
+    pub fn load_diffuse_texture_by_name(self, texture_name: &str) -> texture::Texture {
+        let (doom_texture, (width, height)) = wad_graphics::texture_to_gl_texture(self.scene, texture_name);
+        let diffuse_texture =
+            texture::Texture::from_image(self.device, self.queue, &doom_texture, None, false).unwrap();
+
+        diffuse_texture
+    }
+
+    pub fn store_texture_as_material(
+        &mut self,
+        texture_name: &str,
+        materials: &mut Vec<Material>,
+        normal_texture: Rc<texture::Texture>,
+        texture_name_to_material_index: &mut HashMap<String, usize>,
+    ) -> usize {
+        let material_index = if texture_name_to_material_index.contains_key(texture_name) {
+            *texture_name_to_material_index.get(texture_name).unwrap()
+        } else {
+            let diffuse_texture = self.load_diffuse_texture_by_name(&texture_name);
+
+            materials.push(Material::new(
+                self.device,
+                &texture_name,
+                diffuse_texture,
+                normal_texture.clone(),
+                self.layout,
+            ));
+
+            let stored_index = materials.len() - 1;
+
+            texture_name_to_material_index.insert(String::from(texture_name), stored_index);
+
+            stored_index
+        };
+
+        material_index
+    }
+
+    pub fn build_wall_mesh(
+        &mut self,
+        texture_name: &str,
+        materials: &mut Vec<Material>,
+        normal_texture: Rc<texture::Texture>,
+        texture_name_to_material_index: &mut HashMap<String, usize>,
+        vertex_buffer: wgpu::Buffer,
+        index_buffer: wgpu::Buffer,
+        meshes: &mut Vec<Mesh>,
+    ) {
+        let material_index = self.store_texture_as_material(
+            &texture_name,
+            materials,
+            normal_texture.clone(),
+            texture_name_to_material_index,
+        );
+
+        meshes.push(Mesh {
+            name: String::from("Some wall"),
+            vertex_buffer,
+            index_buffer,
+            num_elements: 6,
+            material: material_index,
+        });
+
+        println!("Mesh count: #{}", meshes.len());
     }
 }
 
