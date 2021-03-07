@@ -244,58 +244,6 @@ impl Model {
         Ok(Self { meshes, materials })
     }
 
-    // fn build_wall_quad(
-    //     vertex_1: &MapVertex,
-    //     vertex_2: &MapVertex,
-    //     wall_height_bottom: f32,
-    //     wall_height_top: f32,
-    //     texture: Option<&WallTexture>,
-    // ) -> [GLVertex; 4] {
-    //     // C *------* D
-    //     //   | \  2 |
-    //     //   |  \   |
-    //     //   | 1 \  |
-    //     //   |    \ |
-    //     // A *------* B
-
-    //     // https://en.wikipedia.org/wiki/Triangle_strip -- only 4 verts needed to draw two triangles.
-
-    //     let tex_coords = if texture.is_some() {
-    //         // TODO: Scale these UV coordinates, based on width, height of quad
-    //         [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]
-    //     } else {
-    //         [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]
-    //     };
-
-    //     // TODO: Calculate actual quad normals... right now, they're all negative in the z direction
-    //     [
-    //         GLVertex {
-    //             // A
-    //             position: [vertex_1.x as f32, wall_height_bottom as f32, vertex_1.y as f32],
-    //             normal: [0.0, 0.0, -1.0],
-    //             tex_coords: tex_coords[0],
-    //         },
-    //         GLVertex {
-    //             // B
-    //             position: [vertex_2.x as f32, wall_height_bottom as f32, vertex_2.y as f32],
-    //             normal: [0.0, 0.0, -1.0],
-    //             tex_coords: tex_coords[1],
-    //         },
-    //         GLVertex {
-    //             // C
-    //             position: [vertex_1.x as f32, wall_height_top as f32, vertex_1.y as f32],
-    //             normal: [0.0, 0.0, -1.0],
-    //             tex_coords: tex_coords[2],
-    //         },
-    //         GLVertex {
-    //             // D
-    //             position: [vertex_2.x as f32, wall_height_top as f32, vertex_2.y as f32],
-    //             normal: [0.0, 0.0, -1.0],
-    //             tex_coords: tex_coords[3],
-    //         },
-    //     ]
-    // }
-
     pub fn build_wall_quad_mesh(
         device: &wgpu::Device,
         vertex_1: &maps::MapVertex,
@@ -312,8 +260,9 @@ impl Model {
 
         let mut vertices = Vec::new();
 
+        // NOTE: wgpu uses a flipped z axis coordinate system.
         vertices.push(ModelVertex {
-            position: [vertex_1.x as f32, wall_height_bottom as f32, vertex_1.y as f32].into(),
+            position: [vertex_1.x as f32, wall_height_bottom as f32, -vertex_1.y as f32].into(),
             tex_coords: [0.0, 1.0].into(),
             normal: [0.0, 0.0, 1.0].into(),
             // We'll calculate these later
@@ -321,29 +270,26 @@ impl Model {
             bitangent: [0.0; 3].into(),
         });
         vertices.push(ModelVertex {
-            position: [vertex_2.x as f32, wall_height_bottom as f32, vertex_2.y as f32].into(),
+            position: [vertex_2.x as f32, wall_height_bottom as f32, -vertex_2.y as f32].into(),
             tex_coords: [1.0, 1.0].into(),
             normal: [0.0, 0.0, 1.0].into(),
             tangent: [0.0; 3].into(),
             bitangent: [0.0; 3].into(),
         });
         vertices.push(ModelVertex {
-            position: [vertex_1.x as f32, wall_height_top as f32, vertex_1.y as f32].into(),
+            position: [vertex_1.x as f32, wall_height_top as f32, -vertex_1.y as f32].into(),
             tex_coords: [0.0, 0.0].into(),
             normal: [0.0, 0.0, 1.0].into(),
             tangent: [0.0; 3].into(),
             bitangent: [0.0; 3].into(),
         });
         vertices.push(ModelVertex {
-            position: [vertex_2.x as f32, wall_height_top as f32, vertex_2.y as f32].into(),
+            position: [vertex_2.x as f32, wall_height_top as f32, -vertex_2.y as f32].into(),
             tex_coords: [1.0, 0.0].into(),
             normal: [0.0, 0.0, 1.0].into(),
             tangent: [0.0; 3].into(),
             bitangent: [0.0; 3].into(),
         });
-
-        // println!("{:?}", vertices);
-        // panic!("boom!");
 
         let indices = vec![0, 1, 2, 2, 1, 3];
 
@@ -421,8 +367,7 @@ impl Model {
         // let diffuse_path = String::from("cube-diffuse.jpg");
         // let diffuse_texture = texture::Texture::load(device, queue, res_dir.join(diffuse_path), false)?;
 
-        let (example_doom_texture, (w, h)) = wad_graphics::texture_to_gl_texture(scene, "STARTAN3");
-
+        let (example_doom_texture, (width, height)) = wad_graphics::texture_to_gl_texture(scene, "STARTAN3");
         let diffuse_texture = texture::Texture::from_image(device, queue, &example_doom_texture, None, false).unwrap();
 
         let normal_path = String::from("cube-normal.png");

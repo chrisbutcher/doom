@@ -1,5 +1,6 @@
 pub use super::*;
 
+use image::imageops::FilterType;
 use image::DynamicImage;
 
 #[derive(Debug, Clone)]
@@ -103,7 +104,10 @@ pub fn texture_to_gl_texture(scene: &Scene, texture_name: &str) -> (image::Dynam
     }
   }
 
-  (DynamicImage::ImageRgba8(imgbuf), (texture.width, texture.height))
+  let image = DynamicImage::ImageRgba8(imgbuf);
+  image.resize(texture.width as u32, texture.height as u32, FilterType::Nearest);
+
+  (image, (texture.width, texture.height))
 }
 
 pub fn picture_to_rgba_bytes(picture: &Picture, palette: &std::vec::Vec<PaletteColor>) -> Vec<u8> {
