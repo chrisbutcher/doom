@@ -397,7 +397,7 @@ impl State {
         &device,
         "alt-material",
         diffuse_texture,
-        normal_texture,
+        Rc::new(normal_texture),
         &texture_bind_group_layout,
       )
     };

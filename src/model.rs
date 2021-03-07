@@ -63,7 +63,7 @@ impl Vertex for ModelVertex {
 pub struct Material {
     pub name: String,
     pub diffuse_texture: texture::Texture,
-    pub normal_texture: texture::Texture,
+    pub normal_texture: Rc<texture::Texture>,
     pub bind_group: wgpu::BindGroup,
 }
 
@@ -72,7 +72,7 @@ impl Material {
         device: &wgpu::Device,
         name: &str,
         diffuse_texture: texture::Texture,
-        normal_texture: texture::Texture,
+        normal_texture: Rc<texture::Texture>,
         layout: &wgpu::BindGroupLayout,
     ) -> Self {
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -145,7 +145,7 @@ impl Model {
                 device,
                 &mat.name,
                 diffuse_texture,
-                normal_texture,
+                Rc::new(normal_texture),
                 layout,
             ));
         }
@@ -352,6 +352,18 @@ impl Model {
         (vertex_buffer, index_buffer)
     }
 
+    pub fn load_diffuse_texture_by_name(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        scene: &Scene,
+        texture_name: &str,
+    ) -> texture::Texture {
+        let (example_doom_texture, (width, height)) = wad_graphics::texture_to_gl_texture(scene, texture_name);
+        let diffuse_texture = texture::Texture::from_image(device, queue, &example_doom_texture, None, false).unwrap();
+
+        diffuse_texture
+    }
+
     pub fn load_scene(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -367,19 +379,13 @@ impl Model {
         // let diffuse_path = String::from("cube-diffuse.jpg");
         // let diffuse_texture = texture::Texture::load(device, queue, res_dir.join(diffuse_path), false)?;
 
-        let (example_doom_texture, (width, height)) = wad_graphics::texture_to_gl_texture(scene, "STARTAN3");
-        let diffuse_texture = texture::Texture::from_image(device, queue, &example_doom_texture, None, false).unwrap();
+        // let (example_doom_texture, (width, height)) = wad_graphics::texture_to_gl_texture(scene, "STARTAN3");
+        // let diffuse_texture = texture::Texture::from_image(device, queue, &example_doom_texture, None, false).unwrap();
 
-        let normal_path = String::from("cube-normal.png");
-        let normal_texture = texture::Texture::load(device, queue, res_dir.join(normal_path), true)?;
+        let normal_path = String::from("flat-normal.png");
+        let normal_texture = Rc::new(texture::Texture::load(device, queue, res_dir.join(normal_path), true)?);
 
-        materials.push(Material::new(
-            device,
-            "Cube material",
-            diffuse_texture,
-            normal_texture,
-            layout,
-        ));
+        let mut texture_name_to_material_index: HashMap<String, usize> = HashMap::new();
 
         for line in &scene.map.linedefs {
             let start_vertex_index = line.start_vertex;
@@ -425,7 +431,27 @@ impl Model {
                     println!("Loaded sidedef with texture named: {}", texture_name);
 
                     // TODO: Do this more efficiently, with Hashmap etc.
-                    let texture = scene.textures.iter().find(|&t| t.name == texture_name).unwrap();
+                    // let texture = scene.textures.iter().find(|&t| t.name == texture_name).unwrap();
+
+                    let material_index = if texture_name_to_material_index.contains_key(&texture_name) {
+                        *texture_name_to_material_index.get(&texture_name).unwrap()
+                    } else {
+                        let diffuse_texture = Model::load_diffuse_texture_by_name(device, queue, scene, &texture_name);
+
+                        materials.push(Material::new(
+                            device,
+                            "Cube material",
+                            diffuse_texture,
+                            normal_texture.clone(),
+                            layout,
+                        ));
+
+                        let stored_index = materials.len() - 1;
+
+                        texture_name_to_material_index.insert(texture_name, stored_index);
+
+                        stored_index
+                    };
 
                     let (vertex_buffer, index_buffer) = Model::build_wall_quad_mesh(
                         &device,
@@ -440,7 +466,7 @@ impl Model {
                         vertex_buffer,
                         index_buffer,
                         num_elements: 6,
-                        material: 0, // TODO
+                        material: material_index,
                     });
                 }
             }
