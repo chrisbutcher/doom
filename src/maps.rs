@@ -1,11 +1,5 @@
 use regex::Regex;
 
-#[derive(Debug, Clone)]
-pub struct MapVertex {
-  pub x: i16,
-  pub y: i16,
-}
-
 #[derive(Debug)]
 pub struct Map {
   pub name: String,
@@ -17,8 +11,15 @@ pub struct Map {
 }
 
 #[derive(Debug, Clone)]
+pub struct MapVertex {
+  pub x: i16,
+  pub y: i16,
+}
+
+#[derive(Debug, Clone)]
 pub struct LineDef {
-  // TODO: Flags, special type, sector tag: https://doomwiki.org/wiki/Linedef
+  // TODO: Flags, special type, sector tag: https://doomwiki.org/wiki/Linedef#Doom_level_format
+  // e.g. Need to know if a texture is unpegged
   pub start_vertex: usize,
   pub end_vertex: usize,
   pub front_sidedef_index: Option<usize>,

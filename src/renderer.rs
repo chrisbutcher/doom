@@ -256,6 +256,7 @@ impl State {
       label: Some("texture_bind_group_layout"),
     });
 
+    // let camera = camera::Camera::new((0.0, 0.0, 0.0), cgmath::Deg(-90.0), cgmath::Deg(0.0));
     let camera = camera::Camera::new((1073.0, 50.0, 3635.0), cgmath::Deg(-90.0), cgmath::Deg(0.0));
     let projection = camera::Projection::new(sc_desc.width, sc_desc.height, cgmath::Deg(90.0), 0.1, 100000.0);
     let camera_controller = camera::CameraController::new(400.0, 4.4);
@@ -525,7 +526,7 @@ impl State {
       render_pass.set_pipeline(&self.light_render_pipeline);
       render_pass.draw_light_model(&self.obj_model, &self.uniform_bind_group, &self.light_bind_group);
 
-      if false {
+      if true {
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.draw_model_instanced(
           &self.obj_model,
