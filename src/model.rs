@@ -381,17 +381,33 @@ impl Model {
             // This way, we can check inside that method if there's a front and back, and can obtain ceiling/floor
             // heights from both.
 
-            let front_sidedef = if let Some(front_sidedef_index) = line.front_sidedef_index {
-                Some(&scene.map.sidedefs[front_sidedef_index])
-            } else {
-                None
-            };
+            let (front_sidedef, front_sector, front_floor_height, front_ceiling_height) =
+                if let Some(front_sidedef_index) = line.front_sidedef_index {
+                    let front_sidedef = &scene.map.sidedefs[front_sidedef_index];
+                    let front_sector = &scene.map.sectors[front_sidedef.sector_facing];
+                    (
+                        Some(front_sidedef),
+                        Some(front_sector),
+                        front_sector.floor_height as f32,
+                        front_sector.ceiling_height as f32,
+                    )
+                } else {
+                    (None, None, 0.0, 0.0)
+                };
 
-            let back_sidedef = if let Some(back_sidedef_index) = line.back_sidedef_index {
-                Some(&scene.map.sidedefs[back_sidedef_index])
-            } else {
-                None
-            };
+            let (back_sidedef, back_sector, back_floor_height, back_ceiling_height) =
+                if let Some(back_sidedef_index) = line.back_sidedef_index {
+                    let back_sidedef = &scene.map.sidedefs[back_sidedef_index];
+                    let back_sector = &scene.map.sectors[back_sidedef.sector_facing];
+                    (
+                        Some(back_sidedef),
+                        Some(back_sector),
+                        back_sector.floor_height as f32,
+                        back_sector.ceiling_height as f32,
+                    )
+                } else {
+                    (None, None, 0.0, 0.0)
+                };
 
             wall_builder.build_all_from_sidedefs(
                 front_sidedef,
@@ -481,10 +497,6 @@ impl<'a> WallBuilder<'a> {
         vertex_1: &maps::MapVertex,
         vertex_2: &maps::MapVertex,
     ) {
-        let front_sector = &self.scene.map.sectors[sidedef.sector_facing];
-        let front_sector_floor_height = front_sector.floor_height as f32;
-        let front_sector_ceiling_height = front_sector.ceiling_height as f32;
-
         if sidedef.name_of_middle_texture.is_some()
             && sidedef.name_of_upper_texture.is_none()
             && sidedef.name_of_lower_texture.is_none()
