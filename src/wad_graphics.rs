@@ -82,8 +82,6 @@ pub fn texture_to_gl_texture(scene: &Scene, texture_name: &str) -> (image::Dynam
     let mut patch_y: i32 = 0;
 
     for raw_pixel in patch_bytes.chunks(4) {
-      // println!("patch_x: {}, patch_y: {}", patch_x, patch_y);
-
       let target_x = patch_x + patch.originx as i32;
       let target_y = patch_y + patch.originy as i32;
 

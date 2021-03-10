@@ -23,6 +23,7 @@ pub mod wad_graphics;
 
 mod camera;
 mod model;
+mod obj_loader;
 mod renderer;
 mod texture;
 

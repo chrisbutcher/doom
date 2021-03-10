@@ -2,7 +2,7 @@ pub use super::*;
 
 use anyhow::*;
 use std::ops::Range;
-use std::path::Path;
+
 use wgpu::util::DeviceExt;
 
 use crate::texture;
@@ -14,11 +14,34 @@ pub trait Vertex {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ModelVertex {
-    position: [f32; 3],
-    tex_coords: [f32; 2],
-    normal: [f32; 3],
-    tangent: [f32; 3],
-    bitangent: [f32; 3],
+    pub position: [f32; 3],
+    pub tex_coords: [f32; 2],
+    pub normal: [f32; 3],
+    pub tangent: [f32; 3],
+    pub bitangent: [f32; 3],
+}
+
+#[derive(Debug)]
+pub struct Material {
+    pub name: String,
+    pub diffuse_texture: texture::Texture,
+    pub normal_texture: Rc<texture::Texture>,
+    pub bind_group: wgpu::BindGroup,
+}
+
+#[derive(Debug)]
+pub struct Mesh {
+    pub name: String,
+    pub vertex_buffer: wgpu::Buffer,
+    pub index_buffer: wgpu::Buffer,
+    pub num_elements: u32,
+    pub material: usize,
+}
+
+#[derive(Debug)]
+pub struct Model {
+    pub meshes: Vec<Mesh>,
+    pub materials: Vec<Material>,
 }
 
 impl Vertex for ModelVertex {
@@ -57,14 +80,6 @@ impl Vertex for ModelVertex {
             ],
         }
     }
-}
-
-#[derive(Debug)]
-pub struct Material {
-    pub name: String,
-    pub diffuse_texture: texture::Texture,
-    pub normal_texture: Rc<texture::Texture>,
-    pub bind_group: wgpu::BindGroup,
 }
 
 impl Material {
@@ -106,144 +121,8 @@ impl Material {
         }
     }
 }
-#[derive(Debug)]
-pub struct Mesh {
-    pub name: String,
-    pub vertex_buffer: wgpu::Buffer,
-    pub index_buffer: wgpu::Buffer,
-    pub num_elements: u32,
-    pub material: usize,
-}
-
-#[derive(Debug)]
-pub struct Model {
-    pub meshes: Vec<Mesh>,
-    pub materials: Vec<Material>,
-}
 
 impl Model {
-    pub fn load<P: AsRef<Path>>(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        layout: &wgpu::BindGroupLayout,
-        path: P,
-    ) -> Result<Self> {
-        let (obj_models, obj_materials) = tobj::load_obj(path.as_ref(), true)?;
-
-        // We're assuming that the texture files are stored with the obj file
-        let containing_folder = path.as_ref().parent().context("Directory has no parent")?;
-
-        let mut materials = Vec::new();
-        for mat in obj_materials {
-            let diffuse_path = mat.diffuse_texture;
-            let diffuse_texture = texture::Texture::load(device, queue, containing_folder.join(diffuse_path), false)?;
-
-            let normal_path = mat.normal_texture;
-            let normal_texture = texture::Texture::load(device, queue, containing_folder.join(normal_path), true)?;
-
-            materials.push(Material::new(
-                device,
-                &mat.name,
-                diffuse_texture,
-                Rc::new(normal_texture),
-                layout,
-            ));
-        }
-
-        let mut meshes = Vec::new();
-        for m in obj_models {
-            let mut vertices = Vec::new();
-            for i in 0..m.mesh.positions.len() / 3 {
-                vertices.push(ModelVertex {
-                    position: [
-                        m.mesh.positions[i * 3],
-                        m.mesh.positions[i * 3 + 1],
-                        m.mesh.positions[i * 3 + 2],
-                    ]
-                    .into(),
-                    tex_coords: [m.mesh.texcoords[i * 2], m.mesh.texcoords[i * 2 + 1]].into(),
-                    normal: [
-                        m.mesh.normals[i * 3],
-                        m.mesh.normals[i * 3 + 1],
-                        m.mesh.normals[i * 3 + 2],
-                    ]
-                    .into(),
-                    // We'll calculate these later
-                    tangent: [0.0; 3].into(),
-                    bitangent: [0.0; 3].into(),
-                });
-            }
-
-            let indices = &m.mesh.indices;
-
-            // Calculate tangents and bitangets. We're going to
-            // use the triangles, so we need to loop through the
-            // indices in chunks of 3
-            for c in indices.chunks(3) {
-                let v0 = vertices[c[0] as usize];
-                let v1 = vertices[c[1] as usize];
-                let v2 = vertices[c[2] as usize];
-
-                let pos0: cgmath::Vector3<_> = v0.position.into();
-                let pos1: cgmath::Vector3<_> = v1.position.into();
-                let pos2: cgmath::Vector3<_> = v2.position.into();
-
-                let uv0: cgmath::Vector2<_> = v0.tex_coords.into();
-                let uv1: cgmath::Vector2<_> = v1.tex_coords.into();
-                let uv2: cgmath::Vector2<_> = v2.tex_coords.into();
-
-                // Calculate the edges of the triangle
-                let delta_pos1 = pos1 - pos0;
-                let delta_pos2 = pos2 - pos0;
-
-                // This will give us a direction to calculate the
-                // tangent and bitangent
-                let delta_uv1 = uv1 - uv0;
-                let delta_uv2 = uv2 - uv0;
-
-                // Solving the following system of equations will
-                // give us the tangent and bitangent.
-                //     delta_pos1 = delta_uv1.x * T + delta_u.y * B
-                //     delta_pos2 = delta_uv2.x * T + delta_uv2.y * B
-                // Luckily, the place I found this equation provided
-                // the solution!
-                let r = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
-                let tangent = (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * r;
-                let bitangent = (delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * r;
-
-                // We'll use the same tangent/bitangent for each vertex in the triangle
-                vertices[c[0] as usize].tangent = tangent.into();
-                vertices[c[1] as usize].tangent = tangent.into();
-                vertices[c[2] as usize].tangent = tangent.into();
-
-                vertices[c[0] as usize].bitangent = bitangent.into();
-                vertices[c[1] as usize].bitangent = bitangent.into();
-                vertices[c[2] as usize].bitangent = bitangent.into();
-            }
-
-            let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("{:?} Vertex Buffer", path.as_ref())),
-                contents: bytemuck::cast_slice(&vertices),
-                usage: wgpu::BufferUsage::VERTEX,
-            });
-            let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("{:?} Index Buffer", path.as_ref())),
-                contents: bytemuck::cast_slice(&m.mesh.indices),
-                usage: wgpu::BufferUsage::INDEX,
-            });
-
-            meshes.push(Mesh {
-                name: m.name,
-                vertex_buffer,
-                index_buffer,
-                num_elements: m.mesh.indices.len() as u32,
-                material: m.mesh.material_id.unwrap_or(0),
-            });
-        }
-
-        Ok(Self { meshes, materials })
-    }
-
     pub fn build_wall_vertices_indices(
         device: &wgpu::Device,
         vertex_1: &maps::MapVertex,
@@ -367,9 +246,6 @@ impl Model {
         let normal_path = String::from("flat-normal.png"); // TODO: Try generating normal maps from diffuse?
         let normal_texture = Rc::new(texture::Texture::load(device, queue, res_dir.join(normal_path), true)?);
 
-        // Walls have one sidedef.
-        // Portals have two sidedefs.
-
         for line in &scene.map.linedefs {
             let start_vertex_index = line.start_vertex;
             let end_vertex_index = line.end_vertex;
@@ -377,47 +253,53 @@ impl Model {
             let start_vertex = &scene.map.vertexes[start_vertex_index];
             let end_vertex = &scene.map.vertexes[end_vertex_index];
 
-            // TODO: Grab both side defs, pass them into build_all_from_sidedef, as Options.
-            // This way, we can check inside that method if there's a front and back, and can obtain ceiling/floor
-            // heights from both.
+            // Walls have one sidedef.
+            // Portals (as defined in the Doom Black Book) have two sidedefs.
 
-            let (front_sidedef, front_sector, front_floor_height, front_ceiling_height) =
-                if let Some(front_sidedef_index) = line.front_sidedef_index {
-                    let front_sidedef = &scene.map.sidedefs[front_sidedef_index];
-                    let front_sector = &scene.map.sectors[front_sidedef.sector_facing];
-                    (
-                        Some(front_sidedef),
-                        Some(front_sector),
-                        front_sector.floor_height as f32,
-                        front_sector.ceiling_height as f32,
-                    )
-                } else {
-                    (None, None, 0.0, 0.0)
-                };
+            let (front_sidedef, front_sector) = if let Some(front_sidedef_index) = line.front_sidedef_index {
+                let front_sidedef = &scene.map.sidedefs[front_sidedef_index];
+                let front_sector = &scene.map.sectors[front_sidedef.sector_facing];
 
-            let (back_sidedef, back_sector, back_floor_height, back_ceiling_height) =
-                if let Some(back_sidedef_index) = line.back_sidedef_index {
-                    let back_sidedef = &scene.map.sidedefs[back_sidedef_index];
-                    let back_sector = &scene.map.sectors[back_sidedef.sector_facing];
-                    (
-                        Some(back_sidedef),
-                        Some(back_sector),
-                        back_sector.floor_height as f32,
-                        back_sector.ceiling_height as f32,
-                    )
-                } else {
-                    (None, None, 0.0, 0.0)
-                };
+                (Some(front_sidedef), Some(front_sector))
+            } else {
+                (None, None)
+            };
 
+            let (back_sidedef, back_sector) = if let Some(back_sidedef_index) = line.back_sidedef_index {
+                let back_sidedef = &scene.map.sidedefs[back_sidedef_index];
+                let back_sector = &scene.map.sectors[back_sidedef.sector_facing];
+
+                (Some(back_sidedef), Some(back_sector))
+            } else {
+                (None, None)
+            };
+
+            // Front sidedef first
             wall_builder.build_all_from_sidedefs(
                 front_sidedef,
                 back_sidedef,
+                front_sector,
+                back_sector,
                 &mut materials,
                 normal_texture.clone(),
                 &mut texture_name_to_material_index,
                 &mut meshes,
                 start_vertex,
                 end_vertex,
+            );
+
+            // ... then back sidedef.
+            wall_builder.build_all_from_sidedefs(
+                back_sidedef,
+                front_sidedef,
+                back_sector,
+                front_sector,
+                &mut materials,
+                normal_texture.clone(),
+                &mut texture_name_to_material_index,
+                &mut meshes,
+                end_vertex,
+                start_vertex,
             );
         }
 
@@ -488,8 +370,10 @@ impl<'a> WallBuilder<'a> {
 
     pub fn build_all_from_sidedefs(
         &mut self,
-        front_sidedef: Option<&maps::SideDef>,
-        back_sidedef: Option<&maps::SideDef>,
+        this_sidedef: Option<&maps::SideDef>,
+        other_sidedef: Option<&maps::SideDef>,
+        this_sector: Option<&maps::Sector>,
+        other_sector: Option<&maps::Sector>,
         materials: &mut Vec<Material>,
         normal_texture: Rc<texture::Texture>,
         texture_name_to_material_index: &mut HashMap<String, usize>,
@@ -497,24 +381,68 @@ impl<'a> WallBuilder<'a> {
         vertex_1: &maps::MapVertex,
         vertex_2: &maps::MapVertex,
     ) {
-        if sidedef.name_of_middle_texture.is_some()
-            && sidedef.name_of_upper_texture.is_none()
-            && sidedef.name_of_lower_texture.is_none()
-        {
-            let texture_name = sidedef.name_of_middle_texture.clone().unwrap();
+        if let Some(this_sidedef) = this_sidedef {
+            if let Some(this_sector) = this_sector {
+                // Simple wall
+                if this_sidedef.name_of_middle_texture.is_some() {
+                    let texture_name = this_sidedef.name_of_middle_texture.clone().unwrap();
 
-            self.build_wall_mesh(
-                &texture_name,
-                materials,
-                normal_texture.clone(),
-                texture_name_to_material_index,
-                meshes,
-                vertex_1,
-                vertex_2,
-                front_sector_floor_height,
-                front_sector_ceiling_height,
-            );
-        }
+                    self.build_wall_mesh(
+                        &texture_name,
+                        materials,
+                        normal_texture.clone(),
+                        texture_name_to_material_index,
+                        meshes,
+                        vertex_1,
+                        vertex_2,
+                        this_sector.floor_height as f32,
+                        this_sector.ceiling_height as f32,
+                    );
+                }
+
+                if let Some(other_sidedef) = other_sidedef {
+                    if let Some(other_sector) = other_sector {
+                        // Upper texture on portal. Down step from ceiling, between this higher ceiling sector and
+                        // connected sector with lower ceiling.
+                        if this_sidedef.name_of_upper_texture.is_some()
+                            && this_sector.ceiling_height > other_sector.ceiling_height
+                        {
+                            let texture_name = this_sidedef.name_of_upper_texture.clone().unwrap();
+                            self.build_wall_mesh(
+                                &texture_name,
+                                materials,
+                                normal_texture.clone(),
+                                texture_name_to_material_index,
+                                meshes,
+                                vertex_1,
+                                vertex_2,
+                                other_sector.ceiling_height as f32,
+                                this_sector.ceiling_height as f32,
+                            );
+                        }
+
+                        // Lower texture on portal. Up step from floor, between this lower floor sector and
+                        // connected sector with heigher floor.
+                        if this_sidedef.name_of_lower_texture.is_some()
+                            && this_sector.floor_height < other_sector.floor_height
+                        {
+                            let texture_name = this_sidedef.name_of_lower_texture.clone().unwrap();
+                            self.build_wall_mesh(
+                                &texture_name,
+                                materials,
+                                normal_texture.clone(),
+                                texture_name_to_material_index,
+                                meshes,
+                                vertex_1,
+                                vertex_2,
+                                this_sector.floor_height as f32,
+                                other_sector.floor_height as f32,
+                            );
+                        }
+                    }
+                }
+            }
+        };
     }
 
     pub fn build_wall_mesh(
@@ -546,8 +474,6 @@ impl<'a> WallBuilder<'a> {
             num_elements: 6,
             material: material_index,
         });
-
-        println!("Mesh count: #{}", meshes.len());
     }
 }
 
