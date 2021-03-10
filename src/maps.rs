@@ -19,6 +19,7 @@ pub struct Map {
 #[derive(Debug, Clone)]
 pub struct LineDef {
   // TODO: Flags, special type, sector tag: https://doomwiki.org/wiki/Linedef
+  pub linedef_index: usize,
   pub start_vertex: usize,
   pub end_vertex: usize,
   pub front_sidedef_index: Option<usize>,
@@ -27,6 +28,7 @@ pub struct LineDef {
 
 #[derive(Debug, Clone)]
 pub struct SideDef {
+  pub sidedef_index: usize,
   pub x_offset: i16,
   pub y_offset: i16,
   pub name_of_upper_texture: Option<String>,
@@ -37,6 +39,7 @@ pub struct SideDef {
 
 #[derive(Debug, Clone)]
 pub struct Sector {
+  pub sector_index: usize,
   pub floor_height: i16,
   pub ceiling_height: i16,
   pub name_of_floor_texture: String,   // Make these Option<String> ?
@@ -96,7 +99,7 @@ pub fn load(map_name_pattern: &str, wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>
         let mut line_i = lump.filepos;
         let line_count = lump.size / 14; // each line is 14 bytes, 7x 16-bit (or 2 byte) signed integers
 
-        for _ in 0..line_count {
+        for linedef_index in 0..line_count {
           let start_vertex = i16::from_le_bytes([wad_file[line_i], wad_file[line_i + 1]]);
           let end_vertex = i16::from_le_bytes([wad_file[line_i + 2], wad_file[line_i + 3]]);
           let front_sidedef_index =
@@ -107,6 +110,7 @@ pub fn load(map_name_pattern: &str, wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>
           // NOTE: If front_sidedef_index or back_sidedef_index are std::usize::MAX, they are actually -1, meaning ignore them.
 
           current_map_linedefs.push(LineDef {
+            linedef_index: linedef_index,
             start_vertex: start_vertex as usize,
             end_vertex: end_vertex as usize,
             front_sidedef_index: front_sidedef_index,
@@ -121,7 +125,7 @@ pub fn load(map_name_pattern: &str, wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>
         let mut sidedef_i = lump.filepos;
         let sidedef_count = lump.size / 30; // each sidedef is 30 bytes
 
-        for _ in 0..sidedef_count {
+        for sidedef_index in 0..sidedef_count {
           let x_offset = i16::from_le_bytes([wad_file[sidedef_i], wad_file[sidedef_i + 1]]);
           let y_offset = i16::from_le_bytes([wad_file[sidedef_i + 2], wad_file[sidedef_i + 3]]);
 
@@ -176,6 +180,7 @@ pub fn load(map_name_pattern: &str, wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>
           let sector_facing = i16::from_le_bytes([wad_file[sidedef_i + 28], wad_file[sidedef_i + 29]]) as usize;
 
           current_map_sidedefs.push(SideDef {
+            sidedef_index: sidedef_index,
             x_offset: x_offset,
             y_offset: y_offset,
             name_of_upper_texture: name_of_upper_texture, // TODO, sometimes return None, if texture is blank
@@ -192,7 +197,7 @@ pub fn load(map_name_pattern: &str, wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>
         let mut sector_i = lump.filepos;
         let sector_count = lump.size / 26; // each sector is 26 bytes
 
-        for _ in 0..sector_count {
+        for sector_index in 0..sector_count {
           let floor_height = i16::from_le_bytes([wad_file[sector_i], wad_file[sector_i + 1]]);
           let ceiling_height = i16::from_le_bytes([wad_file[sector_i + 2], wad_file[sector_i + 3]]);
 
@@ -229,6 +234,7 @@ pub fn load(map_name_pattern: &str, wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>
           let tag_number = i16::from_le_bytes([wad_file[sector_i + 24], wad_file[sector_i + 25]]);
 
           current_map_sectors.push(Sector {
+            sector_index: sector_index,
             floor_height: floor_height,
             ceiling_height: ceiling_height,
             name_of_floor_texture: name_of_floor_texture,

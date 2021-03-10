@@ -3,6 +3,9 @@ pub use super::*;
 use anyhow::*;
 use std::ops::Range;
 
+use geo::prelude::Contains;
+use geo::{LineString, Polygon};
+
 use wgpu::util::DeviceExt;
 
 use crate::texture;
@@ -19,18 +22,6 @@ pub struct ModelVertex {
     pub normal: [f32; 3],
     pub tangent: [f32; 3],
     pub bitangent: [f32; 3],
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct GeoLine {
-    pub from: GeoVertex,
-    pub to: GeoVertex,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct GeoVertex {
-    pub x: f32,
-    pub y: f32,
 }
 
 #[derive(Debug)]
@@ -274,9 +265,7 @@ impl Model {
                 let front_sidedef = &scene.map.sidedefs[front_sidedef_index];
                 let front_sector = &scene.map.sectors[front_sidedef.sector_facing];
 
-                if front_sidedef.sector_facing == 1 {
-                    // ^ Temporary
-
+                if front_sidedef.sector_facing == 0 || front_sidedef.sector_facing == 1 {
                     floor_builder.track_sector_boundaries(front_sidedef.sector_facing, start_vertex, end_vertex);
                 }
 
@@ -329,14 +318,32 @@ impl Model {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct GeoLine {
+    pub from: GeoVertex,
+    pub to: GeoVertex,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct GeoVertex {
+    pub x: f32,
+    pub y: f32,
+}
+
+#[derive(Debug)]
+pub struct SectorPolygon {
+    pub sector_id: usize,
+    pub polygon: Polygon<f32>,
+}
+
 pub struct FloorBuilder {
-    sector_id_to_vertices: HashMap<usize, Vec<GeoLine>>,
+    sector_id_to_geo_lines: HashMap<usize, Vec<GeoLine>>,
 }
 
 impl FloorBuilder {
     pub fn new() -> FloorBuilder {
         FloorBuilder {
-            sector_id_to_vertices: HashMap::new(),
+            sector_id_to_geo_lines: HashMap::new(),
         }
     }
 
@@ -346,7 +353,7 @@ impl FloorBuilder {
         start_vertex: &maps::MapVertex,
         end_vertex: &maps::MapVertex,
     ) {
-        let entry = self.sector_id_to_vertices.entry(sector_index).or_insert(Vec::new());
+        let entry = self.sector_id_to_geo_lines.entry(sector_index).or_insert(Vec::new());
 
         entry.push(GeoLine {
             from: GeoVertex {
@@ -361,20 +368,45 @@ impl FloorBuilder {
     }
 
     pub fn build_floors(self) {
-        // Loop over all key/values in sector_id_to_vertices
+        let mut all_sector_polygons = vec![];
+
+        // Loop over all key/values in sector_id_to_geo_lines
         // Build up a list of geo polygons, stored with their sector id.
+        for (sector_id, geo_lines) in &self.sector_id_to_geo_lines {
+            println!("{:?}: \"{:?}\"", sector_id, geo_lines);
+
+            let polygon_linestring_tuples: Vec<(f32, f32)> = geo_lines
+                .iter()
+                .flat_map(|line| vec![(line.from.x, line.from.y), (line.to.x, line.to.y)])
+                .collect();
+
+            let sector_polygon = SectorPolygon {
+                sector_id: *sector_id,
+                polygon: Polygon::new(LineString::from(polygon_linestring_tuples), vec![]),
+            };
+
+            all_sector_polygons.push(sector_polygon);
+        }
+
+        for (x_index, x) in all_sector_polygons.iter().enumerate() {
+            for (y_index, y) in all_sector_polygons.iter().enumerate() {
+                if x_index == y_index {
+                    continue;
+                }
+
+                if x.polygon.contains(&y.polygon) {
+                    println!("Sector {} contains Sector {}", x.sector_id, y.sector_id);
+                } else {
+                    println!("Sector {} does NOT contain Sector {}", x.sector_id, y.sector_id);
+                }
+            }
+        }
 
         // Build a tree of sector relationships? Root node pointing to un-connected siblings.
+        // https://en.wikipedia.org/wiki/M-ary_tree ?
         // Any sectors with child sectors contain said child sectors.
         //
         // Walk down tree, treating any child sectors as "holes" in geo crate lingo.
-
-        println!("{:?}", self.sector_id_to_vertices);
-
-        let v = self.sector_id_to_vertices.get(&1).unwrap();
-        println!("{}", v.len());
-
-        // panic!("hi");
     }
 }
 
