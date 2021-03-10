@@ -21,6 +21,18 @@ pub struct ModelVertex {
     pub bitangent: [f32; 3],
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct GeoLine {
+    pub from: GeoVertex,
+    pub to: GeoVertex,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct GeoVertex {
+    pub x: f32,
+    pub y: f32,
+}
+
 #[derive(Debug)]
 pub struct Material {
     pub name: String,
@@ -238,6 +250,8 @@ impl Model {
         scene: &Scene,
     ) -> Result<Self> {
         let mut wall_builder = WallBuilder::new(device, queue, layout, scene);
+        let mut floor_builder = FloorBuilder::new();
+
         let mut meshes = Vec::new();
         let mut materials = Vec::new();
         let mut texture_name_to_material_index: HashMap<String, usize> = HashMap::new();
@@ -259,6 +273,12 @@ impl Model {
             let (front_sidedef, front_sector) = if let Some(front_sidedef_index) = line.front_sidedef_index {
                 let front_sidedef = &scene.map.sidedefs[front_sidedef_index];
                 let front_sector = &scene.map.sectors[front_sidedef.sector_facing];
+
+                if front_sidedef.sector_facing == 1 {
+                    // ^ Temporary
+
+                    floor_builder.track_sector_boundaries(front_sidedef.sector_facing, start_vertex, end_vertex);
+                }
 
                 (Some(front_sidedef), Some(front_sector))
             } else {
@@ -303,7 +323,58 @@ impl Model {
             );
         }
 
+        floor_builder.build_floors();
+
         Ok(Self { meshes, materials })
+    }
+}
+
+pub struct FloorBuilder {
+    sector_id_to_vertices: HashMap<usize, Vec<GeoLine>>,
+}
+
+impl FloorBuilder {
+    pub fn new() -> FloorBuilder {
+        FloorBuilder {
+            sector_id_to_vertices: HashMap::new(),
+        }
+    }
+
+    pub fn track_sector_boundaries(
+        &mut self,
+        sector_index: usize,
+        start_vertex: &maps::MapVertex,
+        end_vertex: &maps::MapVertex,
+    ) {
+        let entry = self.sector_id_to_vertices.entry(sector_index).or_insert(Vec::new());
+
+        entry.push(GeoLine {
+            from: GeoVertex {
+                x: start_vertex.x as f32,
+                y: start_vertex.y as f32,
+            },
+            to: GeoVertex {
+                x: end_vertex.x as f32,
+                y: end_vertex.y as f32,
+            },
+        });
+    }
+
+    pub fn build_floors(self) {
+        // Loop over all key/values in sector_id_to_vertices
+        // Build up a list of geo polygons, stored with their sector id.
+
+        // Build a tree of sector relationships? Root node pointing to un-connected siblings.
+        // Any sectors with child sectors contain said child sectors.
+        //
+        // Walk down tree, treating any child sectors as "holes" in geo crate lingo.
+
+        println!("{:?}", self.sector_id_to_vertices);
+
+        let v = self.sector_id_to_vertices.get(&1).unwrap();
+        println!("{}", v.len());
+
+        // panic!("hi");
     }
 }
 
@@ -331,7 +402,7 @@ impl<'a> WallBuilder<'a> {
     }
 
     pub fn load_diffuse_texture_by_name(self, texture_name: &str) -> texture::Texture {
-        let (doom_texture, (width, height)) = wad_graphics::texture_to_gl_texture(self.scene, texture_name);
+        let (doom_texture, (_width, _height)) = wad_graphics::texture_to_gl_texture(self.scene, texture_name);
         let diffuse_texture =
             texture::Texture::from_image(self.device, self.queue, &doom_texture, None, false).unwrap();
 
@@ -400,7 +471,7 @@ impl<'a> WallBuilder<'a> {
                     );
                 }
 
-                if let Some(other_sidedef) = other_sidedef {
+                if let Some(_other_sidedef) = other_sidedef {
                     if let Some(other_sector) = other_sector {
                         // Upper texture on portal. Down step from ceiling, between this higher ceiling sector and
                         // connected sector with lower ceiling.
