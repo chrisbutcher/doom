@@ -367,6 +367,9 @@ impl Model {
         let normal_path = String::from("flat-normal.png"); // TODO: Try generating normal maps from diffuse?
         let normal_texture = Rc::new(texture::Texture::load(device, queue, res_dir.join(normal_path), true)?);
 
+        // Walls have one sidedef.
+        // Portals have two sidedefs.
+
         for line in &scene.map.linedefs {
             let start_vertex_index = line.start_vertex;
             let end_vertex_index = line.end_vertex;
@@ -374,69 +377,32 @@ impl Model {
             let start_vertex = &scene.map.vertexes[start_vertex_index];
             let end_vertex = &scene.map.vertexes[end_vertex_index];
 
-            if let Some(front_sidedef_index) = line.front_sidedef_index {
-                let front_sidedef = &scene.map.sidedefs[front_sidedef_index];
-                let front_sector = &scene.map.sectors[front_sidedef.sector_facing];
-                let front_sector_floor_height = front_sector.floor_height as f32;
-                let front_sector_ceiling_height = front_sector.ceiling_height as f32;
+            // TODO: Grab both side defs, pass them into build_all_from_sidedef, as Options.
+            // This way, we can check inside that method if there's a front and back, and can obtain ceiling/floor
+            // heights from both.
 
-                if front_sidedef.name_of_middle_texture.is_some()
-                    && front_sidedef.name_of_upper_texture.is_none()
-                    && front_sidedef.name_of_lower_texture.is_none()
-                {
-                    let texture_name = front_sidedef.name_of_middle_texture.clone().unwrap();
-
-                    let (vertex_buffer, index_buffer) = Model::build_wall_vertices_indices(
-                        device,
-                        start_vertex,
-                        end_vertex,
-                        front_sector_floor_height,
-                        front_sector_ceiling_height,
-                    );
-
-                    wall_builder.build_wall_mesh(
-                        &texture_name,
-                        &mut materials,
-                        normal_texture.clone(),
-                        &mut texture_name_to_material_index,
-                        vertex_buffer,
-                        index_buffer,
-                        &mut meshes,
-                    );
-                }
+            let front_sidedef = if let Some(front_sidedef_index) = line.front_sidedef_index {
+                Some(&scene.map.sidedefs[front_sidedef_index])
+            } else {
+                None
             };
 
-            if let Some(back_sidedef_index) = line.back_sidedef_index {
-                let back_sidedef = &scene.map.sidedefs[back_sidedef_index];
-                let back_sector = &scene.map.sectors[back_sidedef.sector_facing];
-                let back_sector_floor_height = back_sector.floor_height as f32;
-                let back_sector_ceiling_height = back_sector.ceiling_height as f32;
+            let back_sidedef = if let Some(back_sidedef_index) = line.back_sidedef_index {
+                Some(&scene.map.sidedefs[back_sidedef_index])
+            } else {
+                None
+            };
 
-                if back_sidedef.name_of_middle_texture.is_some()
-                    && back_sidedef.name_of_upper_texture.is_none()
-                    && back_sidedef.name_of_lower_texture.is_none()
-                {
-                    let texture_name = back_sidedef.name_of_middle_texture.clone().unwrap();
-
-                    let (vertex_buffer, index_buffer) = Model::build_wall_vertices_indices(
-                        device,
-                        end_vertex,
-                        start_vertex,
-                        back_sector_floor_height,
-                        back_sector_ceiling_height,
-                    );
-
-                    wall_builder.build_wall_mesh(
-                        &texture_name,
-                        &mut materials,
-                        normal_texture.clone(),
-                        &mut texture_name_to_material_index,
-                        vertex_buffer,
-                        index_buffer,
-                        &mut meshes,
-                    );
-                }
-            }
+            wall_builder.build_all_from_sidedef(
+                front_sidedef,
+                back_sidedef,
+                &mut materials,
+                normal_texture.clone(),
+                &mut texture_name_to_material_index,
+                &mut meshes,
+                start_vertex,
+                end_vertex,
+            );
         }
 
         Ok(Self { meshes, materials })
@@ -504,16 +470,55 @@ impl<'a> WallBuilder<'a> {
         material_index
     }
 
+    pub fn build_all_from_sidedef(
+        &mut self,
+        sidedef: &maps::SideDef,
+        materials: &mut Vec<Material>,
+        normal_texture: Rc<texture::Texture>,
+        texture_name_to_material_index: &mut HashMap<String, usize>,
+        meshes: &mut Vec<Mesh>,
+        vertex_1: &maps::MapVertex,
+        vertex_2: &maps::MapVertex,
+    ) {
+        let front_sector = &self.scene.map.sectors[sidedef.sector_facing];
+        let front_sector_floor_height = front_sector.floor_height as f32;
+        let front_sector_ceiling_height = front_sector.ceiling_height as f32;
+
+        if sidedef.name_of_middle_texture.is_some()
+            && sidedef.name_of_upper_texture.is_none()
+            && sidedef.name_of_lower_texture.is_none()
+        {
+            let texture_name = sidedef.name_of_middle_texture.clone().unwrap();
+
+            self.build_wall_mesh(
+                &texture_name,
+                materials,
+                normal_texture.clone(),
+                texture_name_to_material_index,
+                meshes,
+                vertex_1,
+                vertex_2,
+                front_sector_floor_height,
+                front_sector_ceiling_height,
+            );
+        }
+    }
+
     pub fn build_wall_mesh(
         &mut self,
         texture_name: &str,
         materials: &mut Vec<Material>,
         normal_texture: Rc<texture::Texture>,
         texture_name_to_material_index: &mut HashMap<String, usize>,
-        vertex_buffer: wgpu::Buffer,
-        index_buffer: wgpu::Buffer,
         meshes: &mut Vec<Mesh>,
+        vertex_1: &maps::MapVertex,
+        vertex_2: &maps::MapVertex,
+        wall_height_bottom: f32,
+        wall_height_top: f32,
     ) {
+        let (vertex_buffer, index_buffer) =
+            Model::build_wall_vertices_indices(self.device, vertex_1, vertex_2, wall_height_bottom, wall_height_top);
+
         let material_index = self.store_texture_as_material(
             &texture_name,
             materials,
