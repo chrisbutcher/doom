@@ -393,7 +393,7 @@ impl Model {
                 None
             };
 
-            wall_builder.build_all_from_sidedef(
+            wall_builder.build_all_from_sidedefs(
                 front_sidedef,
                 back_sidedef,
                 &mut materials,
@@ -470,9 +470,10 @@ impl<'a> WallBuilder<'a> {
         material_index
     }
 
-    pub fn build_all_from_sidedef(
+    pub fn build_all_from_sidedefs(
         &mut self,
-        sidedef: &maps::SideDef,
+        front_sidedef: Option<&maps::SideDef>,
+        back_sidedef: Option<&maps::SideDef>,
         materials: &mut Vec<Material>,
         normal_texture: Rc<texture::Texture>,
         texture_name_to_material_index: &mut HashMap<String, usize>,
