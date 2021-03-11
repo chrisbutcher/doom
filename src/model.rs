@@ -389,6 +389,8 @@ impl FloorBuilder {
             all_sector_polygons.push(sector_polygon);
         }
 
+        let mut parent_polygons_indices_to_child_polygon_indices: HashMap<usize, Vec<usize>> = HashMap::new();
+
         for (x_index, x) in all_sector_polygons.iter().enumerate() {
             for (y_index, y) in all_sector_polygons.iter().enumerate() {
                 if x_index == y_index {
@@ -396,10 +398,37 @@ impl FloorBuilder {
                 }
 
                 if x.polygon.contains(&y.polygon) {
+                    let entry = parent_polygons_indices_to_child_polygon_indices
+                        .entry(x_index)
+                        .or_insert(Vec::new());
+
+                    entry.push(y_index);
+
                     println!("Sector {} contains Sector {}", x.sector_id, y.sector_id);
                 } else {
                     println!("Sector {} does NOT contain Sector {}", x.sector_id, y.sector_id);
                 }
+            }
+        }
+
+        // Simply associating all child polygon array indices with parent array indices.
+        // Walking through all child polygons, and pushing all of them as interiors on parent polygons.
+        //
+        // Not really sure of this approach.
+        for (parent_polygon_id, children_polygon_ids) in parent_polygons_indices_to_child_polygon_indices {
+            for y in children_polygon_ids {
+                let child_polygon = &all_sector_polygons[y];
+                let child_polygon_points: Vec<(f32, f32)> = child_polygon
+                    .polygon
+                    .exterior()
+                    .clone()
+                    .into_points()
+                    .iter()
+                    .map(|point| (point.x(), point.y()))
+                    .collect();
+
+                let parent_polygon = &mut all_sector_polygons[parent_polygon_id];
+                parent_polygon.polygon.interiors_push(child_polygon_points);
             }
         }
 
