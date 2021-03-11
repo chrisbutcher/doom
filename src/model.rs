@@ -3,6 +3,7 @@ pub use super::*;
 use anyhow::*;
 use std::ops::Range;
 
+use geo::algorithm::convex_hull::ConvexHull;
 use geo::prelude::Contains;
 use geo::{LineString, Polygon};
 
@@ -373,16 +374,16 @@ impl FloorBuilder {
         // Loop over all key/values in sector_id_to_geo_lines
         // Build up a list of geo polygons, stored with their sector id.
         for (sector_id, geo_lines) in &self.sector_id_to_geo_lines {
-            println!("{:?}: \"{:?}\"", sector_id, geo_lines);
-
-            let polygon_linestring_tuples: Vec<(f32, f32)> = geo_lines
+            let mut polygon_linestring_tuples: Vec<(f32, f32)> = geo_lines
                 .iter()
                 .flat_map(|line| vec![(line.from.x, line.from.y), (line.to.x, line.to.y)])
                 .collect();
 
+            polygon_linestring_tuples.dedup();
+
             let sector_polygon = SectorPolygon {
                 sector_id: *sector_id,
-                polygon: Polygon::new(LineString::from(polygon_linestring_tuples), vec![]),
+                polygon: Polygon::new(LineString::from(polygon_linestring_tuples), vec![]).convex_hull(),
             };
 
             all_sector_polygons.push(sector_polygon);
