@@ -12,6 +12,8 @@ use winit::{
     window::Window,
 };
 
+use poly2tri::*;
+
 // -- Doom specific
 pub mod colors;
 pub mod lumps;

@@ -3,7 +3,7 @@ pub use super::*;
 use anyhow::*;
 use std::ops::Range;
 
-use geo::algorithm::convex_hull::ConvexHull;
+use geo::algorithm::concave_hull::ConcaveHull;
 use geo::prelude::Contains;
 use geo::{LineString, Polygon};
 
@@ -383,7 +383,7 @@ impl FloorBuilder {
 
             let sector_polygon = SectorPolygon {
                 sector_id: *sector_id,
-                polygon: Polygon::new(LineString::from(polygon_linestring_tuples), vec![]).convex_hull(),
+                polygon: Polygon::new(LineString::from(polygon_linestring_tuples), vec![]).concave_hull(2.0), // or try convex hull
             };
 
             all_sector_polygons.push(sector_polygon);
@@ -431,6 +431,16 @@ impl FloorBuilder {
                 parent_polygon.polygon.interiors_push(child_polygon_points);
             }
         }
+
+        let mut p = poly2tri::Polygon::new();
+        p.add_point(0.0, 10.0);
+        p.add_point(10.0, 10.0);
+        p.add_point(10.0, 0.0);
+        p.add_point(0.0, 0.0);
+        p.add_point(0.0, 0.0);
+
+        println!("{:?}", all_sector_polygons[0].polygon);
+        panic!("boom");
 
         // Build a tree of sector relationships? Root node pointing to un-connected siblings.
         // https://en.wikipedia.org/wiki/M-ary_tree ?

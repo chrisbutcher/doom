@@ -19,7 +19,9 @@ png = "0.16.8"
 svg = "0.9.0"
 regex = "1.4.3"
 lyon = "0.17.5"
+
 geo = "0.17.1"
+poly2tri = "0.1.0"
 
 [build-dependencies]
 anyhow = "1.0"
