@@ -368,13 +368,46 @@ impl FloorBuilder {
         });
     }
 
+    // Handy article on this topic: https://medium.com/@jmickle_/build-a-model-of-a-doom-level-7283addf009f
     pub fn build_floors(self) {
         let mut all_sector_polygons = vec![];
 
-        // Loop over all key/values in sector_id_to_geo_lines
-        // Build up a list of geo polygons, stored with their sector id.
-        for (sector_id, geo_lines) in &self.sector_id_to_geo_lines {
-            let mut polygon_linestring_tuples: Vec<(f32, f32)> = geo_lines
+        let mut sector_id_to_ordered_geo_lines: HashMap<usize, Vec<GeoLine>> = HashMap::new();
+
+        // Build up an ordered set of geo lines, such that the starting line ends with the 2nd line's start, etc.
+        for (sector_id, unordered_geo_lines) in &self.sector_id_to_geo_lines {
+            let mut ordered_geo_lines = vec![];
+            let mut unordered_geo_lines_copy = Vec::with_capacity(unordered_geo_lines.len());
+            unordered_geo_lines_copy.clone_from(unordered_geo_lines);
+
+            ordered_geo_lines.push(unordered_geo_lines_copy[0]);
+            unordered_geo_lines_copy.remove(0);
+
+            // repeat process, inserting first element with .from that matches .to from last existing element
+            // ...
+            while unordered_geo_lines_copy.len() > 0 {
+                let last_ordered_line = ordered_geo_lines.last().unwrap();
+
+                let next_line_index = unordered_geo_lines_copy
+                    .iter()
+                    .position(|line| line.from.x == last_ordered_line.to.x && line.from.y == last_ordered_line.to.y);
+
+                if let Some(next_line_index) = next_line_index {
+                    ordered_geo_lines.push(unordered_geo_lines_copy[next_line_index]);
+                    unordered_geo_lines_copy.remove(next_line_index);
+                } else {
+                    panic!("Found a disconnect line in a sector at {:?}", last_ordered_line);
+                }
+
+                // TODO break if there are no matching elements, to avoid an infinite loop.
+            }
+
+            // push result, tied to sector id.
+            sector_id_to_ordered_geo_lines.insert(*sector_id, ordered_geo_lines);
+        }
+
+        for (sector_id, ordered_geo_lines) in &sector_id_to_ordered_geo_lines {
+            let mut polygon_linestring_tuples: Vec<(f32, f32)> = ordered_geo_lines
                 .iter()
                 .flat_map(|line| vec![(line.from.x, line.from.y), (line.to.x, line.to.y)])
                 .collect();
@@ -383,7 +416,7 @@ impl FloorBuilder {
 
             let sector_polygon = SectorPolygon {
                 sector_id: *sector_id,
-                polygon: Polygon::new(LineString::from(polygon_linestring_tuples), vec![]).concave_hull(2.0), // or try convex hull
+                polygon: Polygon::new(LineString::from(polygon_linestring_tuples), vec![]), // .concave_hull(2.0), // or try convex hull ?
             };
 
             all_sector_polygons.push(sector_polygon);
@@ -391,6 +424,7 @@ impl FloorBuilder {
 
         let mut parent_polygons_indices_to_child_polygon_indices: HashMap<usize, Vec<usize>> = HashMap::new();
 
+        // Use geo crate to find containing sectors, to use with poly2tri crate which handles triangulation w/ holes.
         for (x_index, x) in all_sector_polygons.iter().enumerate() {
             for (y_index, y) in all_sector_polygons.iter().enumerate() {
                 if x_index == y_index {
@@ -411,36 +445,42 @@ impl FloorBuilder {
             }
         }
 
+        let mut sector_id_to_triangulated_polygons: HashMap<usize, poly2tri::TriangleVec> = HashMap::new();
+
         // Simply associating all child polygon array indices with parent array indices.
         // Walking through all child polygons, and pushing all of them as interiors on parent polygons.
         //
         // Not really sure of this approach.
         for (parent_polygon_id, children_polygon_ids) in parent_polygons_indices_to_child_polygon_indices {
+            let parent_polygon = &all_sector_polygons[parent_polygon_id];
+
+            let mut poly2tri_parent_polygon = poly2tri::Polygon::new();
+
+            for point in parent_polygon.polygon.exterior().points_iter() {
+                poly2tri_parent_polygon.add_point(point.x() as f64, point.y() as f64);
+            }
+
+            let mut triangulation = poly2tri::CDT::new(poly2tri_parent_polygon);
+
             for y in children_polygon_ids {
                 let child_polygon = &all_sector_polygons[y];
-                let child_polygon_points: Vec<(f32, f32)> = child_polygon
-                    .polygon
-                    .exterior()
-                    .clone()
-                    .into_points()
-                    .iter()
-                    .map(|point| (point.x(), point.y()))
-                    .collect();
 
-                let parent_polygon = &mut all_sector_polygons[parent_polygon_id];
-                parent_polygon.polygon.interiors_push(child_polygon_points);
+                let mut poly2tri_child_polygon = poly2tri::Polygon::new();
+
+                for point in child_polygon.polygon.exterior().points_iter() {
+                    poly2tri_child_polygon.add_point(point.x() as f64, point.y() as f64);
+                }
+
+                triangulation.add_hole(poly2tri_child_polygon);
             }
+
+            // TODO: This currently fails with
+            // Assertion failed: false, file C:\Users\Chris\.cargo\registry\src\github.com-1ecc6299db9ec823\poly2tri-0.1.0\vendor\poly2tri-cpp\poly2tri\common/shapes.h, line 139
+            //
+            // Which seems to be an assertion about points not being allowed to repeat.
+
+            sector_id_to_triangulated_polygons.insert(parent_polygon_id, triangulation.triangulate());
         }
-
-        let mut p = poly2tri::Polygon::new();
-        p.add_point(0.0, 10.0);
-        p.add_point(10.0, 10.0);
-        p.add_point(10.0, 0.0);
-        p.add_point(0.0, 0.0);
-        p.add_point(0.0, 0.0);
-
-        println!("{:?}", all_sector_polygons[0].polygon);
-        panic!("boom");
 
         // Build a tree of sector relationships? Root node pointing to un-connected siblings.
         // https://en.wikipedia.org/wiki/M-ary_tree ?

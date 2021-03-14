@@ -42,6 +42,15 @@ pub fn draw_map_svg(map: &maps::Map) {
   let map_y_offset = 0 - map.map_centerer.upper_most_y;
 
   for line in &map.linedefs {
+    // if let Some(front_sidedef_index) = line.front_sidedef_index {
+    //   let front_sidedef = &map.sidedefs[front_sidedef_index];
+    //   let front_sector = &map.sectors[front_sidedef.sector_facing];
+
+    //   if front_sidedef.sector_facing != 1 {
+    //     continue;
+    //   }
+    // }
+
     let v1_index = line.start_vertex;
     let v2_index = line.end_vertex;
 

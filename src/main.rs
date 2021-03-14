@@ -77,7 +77,8 @@ fn main() {
     let lumps = lumps::load(&wad_file);
 
     let current_map = maps::load("^E1M1$", &wad_file, &lumps);
-    // map_svg::draw_map_svg(current_map);
+    // map_svg::draw_map_svg(&current_map);
+    // panic!("Stop");
 
     let textures = wad_graphics::load_textures(&wad_file, &lumps);
     let palette = colors::load_first_palette(&wad_file, &lumps);
