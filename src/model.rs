@@ -456,7 +456,10 @@ impl FloorBuilder {
 
             let mut poly2tri_parent_polygon = poly2tri::Polygon::new();
 
-            for point in parent_polygon.polygon.exterior().points_iter() {
+            let p_points = parent_polygon.polygon.exterior().clone().into_points();
+            let p_points_len = p_points.len();
+
+            for point in p_points.iter().take(p_points_len - 1) {
                 poly2tri_parent_polygon.add_point(point.x() as f64, point.y() as f64);
             }
 
@@ -467,20 +470,30 @@ impl FloorBuilder {
 
                 let mut poly2tri_child_polygon = poly2tri::Polygon::new();
 
-                for point in child_polygon.polygon.exterior().points_iter() {
+                let c_points = child_polygon.polygon.exterior().clone().into_points();
+                let c_points_len = c_points.len();
+
+                for point in c_points.iter().take(c_points_len - 1) {
                     poly2tri_child_polygon.add_point(point.x() as f64, point.y() as f64);
                 }
 
                 triangulation.add_hole(poly2tri_child_polygon);
             }
 
-            // TODO: This currently fails with
+            // TODO: This previously failed with
             // Assertion failed: false, file C:\Users\Chris\.cargo\registry\src\github.com-1ecc6299db9ec823\poly2tri-0.1.0\vendor\poly2tri-cpp\poly2tri\common/shapes.h, line 139
             //
-            // Which seems to be an assertion about points not being allowed to repeat.
+            // Which seems to be an assertion about points not being allowed to repeat. This is why we take the
+            // c_ and p_points_len - 1 first points, and let the last edge be implicit.
+
+            println!("########### ID {:?}", parent_polygon_id); // seems to panic without this line?
 
             sector_id_to_triangulated_polygons.insert(parent_polygon_id, triangulation.triangulate());
         }
+
+        let first_sector_triangle = sector_id_to_triangulated_polygons[&0].get_triangle(0);
+
+        println!("{:?}", first_sector_triangle.points);
 
         // Build a tree of sector relationships? Root node pointing to un-connected siblings.
         // https://en.wikipedia.org/wiki/M-ary_tree ?
