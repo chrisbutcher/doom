@@ -282,7 +282,12 @@ impl Model {
                 //     || front_sidedef.sector_facing == 1
                 //     || front_sidedef.sector_facing == 31
                 // {
-                floor_builder.track_sector_boundaries(front_sector.sector_index, start_vertex, end_vertex);
+                floor_builder.track_sector_boundaries(
+                    front_sector.sector_index,
+                    start_vertex,
+                    end_vertex,
+                    line.linedef_index,
+                );
                 // }
 
                 (Some(front_sidedef), Some(front_sector))
@@ -294,7 +299,12 @@ impl Model {
                 let back_sidedef = &scene.map.sidedefs[back_sidedef_index];
                 let back_sector = &scene.map.sectors[back_sidedef.sector_facing];
 
-                floor_builder.track_sector_boundaries(back_sector.sector_index, start_vertex, end_vertex);
+                floor_builder.track_sector_boundaries(
+                    back_sector.sector_index,
+                    start_vertex,
+                    end_vertex,
+                    line.linedef_index,
+                );
 
                 (Some(back_sidedef), Some(back_sector))
             } else {
@@ -343,6 +353,7 @@ impl Model {
 pub struct GeoLine {
     pub from: GeoVertex,
     pub to: GeoVertex,
+    pub linedef_index: usize,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -478,6 +489,7 @@ impl FloorBuilder {
         sector_index: usize,
         start_vertex: &maps::MapVertex,
         end_vertex: &maps::MapVertex,
+        linedef_index: usize,
     ) {
         let entry = self.sector_id_to_geo_lines.entry(sector_index).or_insert(Vec::new());
 
@@ -490,6 +502,7 @@ impl FloorBuilder {
                 x: end_vertex.x as f32,
                 y: end_vertex.y as f32,
             },
+            linedef_index: linedef_index,
         });
     }
 
@@ -531,16 +544,16 @@ impl FloorBuilder {
             // ...
             while ordered_geo_lines.len() < unordered_geo_lines_copy.len() {
                 // while unordered_geo_lines_copy.len() > 0 {
-                let last_ordered_line = ordered_geo_lines.last().unwrap();
+                let dupe = ordered_geo_lines.clone();
+                let last_ordered_line = dupe.last().unwrap();
 
-                let next_line_index = unordered_geo_lines_copy.iter().position(|line| {
-                    (line.from.x == last_ordered_line.to.x && line.from.y == last_ordered_line.to.y)
-                        || (line.to.x == last_ordered_line.from.x && line.to.y == last_ordered_line.from.y)
-                });
+                let next_line_index = unordered_geo_lines_copy
+                    .iter()
+                    .position(|line| line.from.x == last_ordered_line.to.x && line.from.y == last_ordered_line.to.y);
 
                 if let Some(next_line_index) = next_line_index {
                     ordered_geo_lines.push(unordered_geo_lines_copy[next_line_index]);
-                    // unordered_geo_lines_copy.remove(next_line_index);
+                    unordered_geo_lines_copy.remove(next_line_index);
                 } else {
                     // TODO: Convert to panic, until vertex/line data is cleaned up?
                     println!(
@@ -614,6 +627,8 @@ impl FloorBuilder {
         //
         // Not really sure of this approach.
         for (parent_polygon_id, children_polygon_ids) in parent_polygons_indices_to_child_polygon_indices {
+            println!("Triangulating parent sector ID: {}", parent_polygon_id);
+
             let parent_polygon = &all_sector_polygons[parent_polygon_id];
 
             let mut poly2tri_parent_polygon = poly2tri::Polygon::new();
@@ -628,8 +643,10 @@ impl FloorBuilder {
 
             let mut parent_triangulation = poly2tri::CDT::new(poly2tri_parent_polygon);
 
-            for children_polygon_id in children_polygon_ids {
-                let child_polygon = &all_sector_polygons[children_polygon_id];
+            for child_polygon_id in children_polygon_ids {
+                println!("Triangulating child sector ID: {}", child_polygon_id);
+
+                let child_polygon = &all_sector_polygons[child_polygon_id];
 
                 let mut poly2tri_child_polygon_for_hole = poly2tri::Polygon::new();
                 let mut poly2tri_child_polygon_for_mesh = poly2tri::Polygon::new();
@@ -646,7 +663,7 @@ impl FloorBuilder {
                 parent_triangulation.add_hole(poly2tri_child_polygon_for_hole);
 
                 let child_triangulation = poly2tri::CDT::new(poly2tri_child_polygon_for_mesh);
-                sector_id_to_triangulated_polygons.insert(children_polygon_id, child_triangulation.triangulate());
+                sector_id_to_triangulated_polygons.insert(child_polygon_id, child_triangulation.triangulate());
             }
 
             sector_id_to_triangulated_polygons.insert(parent_polygon_id, parent_triangulation.triangulate());
@@ -655,6 +672,8 @@ impl FloorBuilder {
         let mut result: HashMap<usize, Vec<ModelVertex>> = HashMap::new();
 
         for (sector_id, triangulated_polygon) in sector_id_to_triangulated_polygons {
+            println!("Building ModelVertexes for sector ID: {}", sector_id);
+
             let triangles_count = triangulated_polygon.size();
 
             let sector_floor_and_ceiling_height = self.sector_id_to_floor_and_ceiling_height.get(&sector_id).unwrap();
