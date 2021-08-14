@@ -320,7 +320,9 @@ impl Model {
             );
         }
 
-        let sector_id_to_floor_vertices = floor_builder.build_floors();
+        floor_builder.build_floors();
+
+        floor_builder.build_floor_meshes(device, &mut meshes);
 
         Ok(Self { meshes, materials })
     }
@@ -353,6 +355,7 @@ pub struct FloorAndCeilingHeight {
 pub struct FloorBuilder {
     sector_id_to_geo_lines: HashMap<usize, Vec<GeoLine>>,
     sector_id_to_floor_and_ceiling_height: HashMap<usize, FloorAndCeilingHeight>,
+    sector_id_to_floor_vertices: HashMap<usize, Vec<ModelVertex>>,
 }
 
 impl FloorBuilder {
@@ -360,6 +363,7 @@ impl FloorBuilder {
         FloorBuilder {
             sector_id_to_geo_lines: HashMap::new(),
             sector_id_to_floor_and_ceiling_height: HashMap::new(),
+            sector_id_to_floor_vertices: HashMap::new(),
         }
     }
 
@@ -394,7 +398,7 @@ impl FloorBuilder {
 
     // Handy article on this topic: https://medium.com/@jmickle_/build-a-model-of-a-doom-level-7283addf009f
     // Rename to `build_floors_and_ceilings` ?
-    pub fn build_floors(self) -> HashMap<usize, Vec<ModelVertex>> {
+    pub fn build_floors(&mut self) {
         let mut all_sector_polygons = vec![];
 
         let mut sector_id_to_ordered_geo_lines: HashMap<usize, Vec<GeoLine>> = HashMap::new();
@@ -489,38 +493,31 @@ impl FloorBuilder {
                 poly2tri_parent_polygon.add_point(point.x() as f64, point.y() as f64);
             }
 
-            let mut triangulation = poly2tri::CDT::new(poly2tri_parent_polygon);
+            let mut parent_triangulation = poly2tri::CDT::new(poly2tri_parent_polygon);
 
-            for y in children_polygon_ids {
-                let child_polygon = &all_sector_polygons[y];
+            for children_polygon_id in children_polygon_ids {
+                let child_polygon = &all_sector_polygons[children_polygon_id];
 
-                let mut poly2tri_child_polygon = poly2tri::Polygon::new();
+                let mut poly2tri_child_polygon_for_hole = poly2tri::Polygon::new();
+                let mut poly2tri_child_polygon_for_mesh = poly2tri::Polygon::new();
 
                 let c_points = child_polygon.polygon.exterior().clone().into_points();
                 let c_points_len = c_points.len();
 
                 // Exclude last point, since poly2tri library panics on duplicated points in a polygon
                 for point in c_points.iter().take(c_points_len - 1) {
-                    poly2tri_child_polygon.add_point(point.x() as f64, point.y() as f64);
+                    poly2tri_child_polygon_for_hole.add_point(point.x() as f64, point.y() as f64);
+                    poly2tri_child_polygon_for_mesh.add_point(point.x() as f64, point.y() as f64);
                 }
 
-                triangulation.add_hole(poly2tri_child_polygon);
+                parent_triangulation.add_hole(poly2tri_child_polygon_for_hole);
+
+                let child_triangulation = poly2tri::CDT::new(poly2tri_child_polygon_for_mesh);
+                sector_id_to_triangulated_polygons.insert(children_polygon_id, child_triangulation.triangulate());
             }
 
-            sector_id_to_triangulated_polygons.insert(parent_polygon_id, triangulation.triangulate());
+            sector_id_to_triangulated_polygons.insert(parent_polygon_id, parent_triangulation.triangulate());
         }
-
-        // let first_sector_id = sector_id_to_triangulated_polygons.keys().nth(0).unwrap();
-
-        // let first_sector_triangle_vec = &sector_id_to_triangulated_polygons[first_sector_id];
-
-        // let first_sector_triangle_vec_size = first_sector_triangle_vec.size();
-
-        // for i in 0..first_sector_triangle_vec_size {
-        //     let triangle = first_sector_triangle_vec.get_triangle(i);
-
-        //     println!("{:?}", triangle.points);
-        // }
 
         let mut result: HashMap<usize, Vec<ModelVertex>> = HashMap::new();
 
@@ -541,7 +538,7 @@ impl FloorBuilder {
                         ]
                         .into(),
                         tex_coords: [0.0, 1.0].into(),
-                        normal: [0.0, 0.0, 1.0].into(),
+                        normal: [0.0, 0.1, 0.0].into(),
                         // We'll calculate these later
                         tangent: [0.0; 3].into(),
                         bitangent: [0.0; 3].into(),
@@ -553,7 +550,81 @@ impl FloorBuilder {
             }
         }
 
-        return result;
+        self.sector_id_to_floor_vertices = result;
+    }
+
+    pub fn build_floor_meshes(&mut self, device: &wgpu::Device, meshes: &mut Vec<Mesh>) {
+        for (sector_id, floor_vertices) in &self.sector_id_to_floor_vertices {
+            println!("Building mesh for sector: {}", sector_id);
+
+            let mut floor_vertices = floor_vertices.clone();
+
+            let indices: Vec<usize> = (0..floor_vertices.len()).collect();
+
+            // Do a bunch of normals calculation magic:
+            // https://sotrh.github.io/learn-wgpu/intermediate/tutorial11-normals/#the-tangent-and-the-bitangent
+            for c in indices.chunks(3) {
+                let v0 = floor_vertices[c[0] as usize];
+                let v1 = floor_vertices[c[1] as usize];
+                let v2 = floor_vertices[c[2] as usize];
+
+                let pos0: cgmath::Vector3<_> = v0.position.into();
+                let pos1: cgmath::Vector3<_> = v1.position.into();
+                let pos2: cgmath::Vector3<_> = v2.position.into();
+
+                let uv0: cgmath::Vector2<_> = v0.tex_coords.into();
+                let uv1: cgmath::Vector2<_> = v1.tex_coords.into();
+                let uv2: cgmath::Vector2<_> = v2.tex_coords.into();
+
+                // Calculate the edges of the triangle
+                let delta_pos1 = pos1 - pos0;
+                let delta_pos2 = pos2 - pos0;
+
+                // This will give us a direction to calculate the
+                // tangent and bitangent
+                let delta_uv1 = uv1 - uv0;
+                let delta_uv2 = uv2 - uv0;
+
+                // Solving the following system of equations will
+                // give us the tangent and bitangent.
+                //     delta_pos1 = delta_uv1.x * T + delta_u.y * B
+                //     delta_pos2 = delta_uv2.x * T + delta_uv2.y * B
+                // Luckily, the place I found this equation provided
+                // the solution!
+                let r = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
+                let tangent = (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * r;
+                let bitangent = (delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * r;
+
+                // We'll use the same tangent/bitangent for each vertex in the triangle
+                floor_vertices[c[0] as usize].tangent = tangent.into();
+                floor_vertices[c[1] as usize].tangent = tangent.into();
+                floor_vertices[c[2] as usize].tangent = tangent.into();
+
+                floor_vertices[c[0] as usize].bitangent = bitangent.into();
+                floor_vertices[c[1] as usize].bitangent = bitangent.into();
+                floor_vertices[c[2] as usize].bitangent = bitangent.into();
+            }
+
+            let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(&format!("Vertex Buffer (TODO name)")),
+                contents: bytemuck::cast_slice(&floor_vertices),
+                usage: wgpu::BufferUsage::VERTEX,
+            });
+
+            let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(&format!("Index Buffer (TODO name)")),
+                contents: bytemuck::cast_slice(&indices),
+                usage: wgpu::BufferUsage::INDEX,
+            });
+
+            meshes.push(Mesh {
+                name: String::from("Some floor"),
+                vertex_buffer,
+                index_buffer,
+                num_elements: indices.len() as u32,
+                material: 0, // TODO
+            });
+        }
     }
 }
 
