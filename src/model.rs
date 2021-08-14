@@ -266,6 +266,13 @@ impl Model {
                 let front_sidedef = &scene.map.sidedefs[front_sidedef_index];
                 let front_sector = &scene.map.sectors[front_sidedef.sector_facing];
 
+                floor_builder.track_sector_floor_height(
+                    front_sector.sector_index,
+                    front_sector.floor_height as f32,
+                    front_sector.ceiling_height as f32,
+                );
+
+                // Test only with sectors 1 and 2.
                 if front_sidedef.sector_facing == 0 || front_sidedef.sector_facing == 1 {
                     floor_builder.track_sector_boundaries(front_sidedef.sector_facing, start_vertex, end_vertex);
                 }
@@ -313,7 +320,7 @@ impl Model {
             );
         }
 
-        floor_builder.build_floors();
+        let sector_id_to_floor_vertices = floor_builder.build_floors();
 
         Ok(Self { meshes, materials })
     }
@@ -337,14 +344,22 @@ pub struct SectorPolygon {
     pub polygon: Polygon<f32>,
 }
 
+#[derive(Debug)]
+pub struct FloorAndCeilingHeight {
+    pub floor_height: f32,
+    pub ceiling_height: f32,
+}
+
 pub struct FloorBuilder {
     sector_id_to_geo_lines: HashMap<usize, Vec<GeoLine>>,
+    sector_id_to_floor_and_ceiling_height: HashMap<usize, FloorAndCeilingHeight>,
 }
 
 impl FloorBuilder {
     pub fn new() -> FloorBuilder {
         FloorBuilder {
             sector_id_to_geo_lines: HashMap::new(),
+            sector_id_to_floor_and_ceiling_height: HashMap::new(),
         }
     }
 
@@ -368,8 +383,18 @@ impl FloorBuilder {
         });
     }
 
+    pub fn track_sector_floor_height(&mut self, sector_index: usize, floor_height: f32, ceiling_height: f32) {
+        self.sector_id_to_floor_and_ceiling_height
+            .entry(sector_index)
+            .or_insert(FloorAndCeilingHeight {
+                floor_height: floor_height,
+                ceiling_height: ceiling_height,
+            });
+    }
+
     // Handy article on this topic: https://medium.com/@jmickle_/build-a-model-of-a-doom-level-7283addf009f
-    pub fn build_floors(self) {
+    // Rename to `build_floors_and_ceilings` ?
+    pub fn build_floors(self) -> HashMap<usize, Vec<ModelVertex>> {
         let mut all_sector_polygons = vec![];
 
         let mut sector_id_to_ordered_geo_lines: HashMap<usize, Vec<GeoLine>> = HashMap::new();
@@ -425,18 +450,18 @@ impl FloorBuilder {
         let mut parent_polygons_indices_to_child_polygon_indices: HashMap<usize, Vec<usize>> = HashMap::new();
 
         // Use geo crate to find containing sectors, to use with poly2tri crate which handles triangulation w/ holes.
-        for (x_index, x) in all_sector_polygons.iter().enumerate() {
-            for (y_index, y) in all_sector_polygons.iter().enumerate() {
-                if x_index == y_index {
+        for (i_index, x) in all_sector_polygons.iter().enumerate() {
+            for (j_index, y) in all_sector_polygons.iter().enumerate() {
+                if i_index == j_index {
                     continue;
                 }
 
                 if x.polygon.contains(&y.polygon) {
                     let entry = parent_polygons_indices_to_child_polygon_indices
-                        .entry(x_index)
+                        .entry(i_index)
                         .or_insert(Vec::new());
 
-                    entry.push(y_index);
+                    entry.push(j_index);
 
                     println!("Sector {} contains Sector {}", x.sector_id, y.sector_id);
                 } else {
@@ -459,6 +484,7 @@ impl FloorBuilder {
             let p_points = parent_polygon.polygon.exterior().clone().into_points();
             let p_points_len = p_points.len();
 
+            // Exclude last point, since poly2tri library panics on duplicated points in a polygon
             for point in p_points.iter().take(p_points_len - 1) {
                 poly2tri_parent_polygon.add_point(point.x() as f64, point.y() as f64);
             }
@@ -473,6 +499,7 @@ impl FloorBuilder {
                 let c_points = child_polygon.polygon.exterior().clone().into_points();
                 let c_points_len = c_points.len();
 
+                // Exclude last point, since poly2tri library panics on duplicated points in a polygon
                 for point in c_points.iter().take(c_points_len - 1) {
                     poly2tri_child_polygon.add_point(point.x() as f64, point.y() as f64);
                 }
@@ -480,26 +507,53 @@ impl FloorBuilder {
                 triangulation.add_hole(poly2tri_child_polygon);
             }
 
-            // TODO: This previously failed with
-            // Assertion failed: false, file C:\Users\Chris\.cargo\registry\src\github.com-1ecc6299db9ec823\poly2tri-0.1.0\vendor\poly2tri-cpp\poly2tri\common/shapes.h, line 139
-            //
-            // Which seems to be an assertion about points not being allowed to repeat. This is why we take the
-            // c_ and p_points_len - 1 first points, and let the last edge be implicit.
-
-            println!("########### ID {:?}", parent_polygon_id); // seems to panic without this line?
-
             sector_id_to_triangulated_polygons.insert(parent_polygon_id, triangulation.triangulate());
         }
 
-        let first_sector_triangle = sector_id_to_triangulated_polygons[&0].get_triangle(0);
+        // let first_sector_id = sector_id_to_triangulated_polygons.keys().nth(0).unwrap();
 
-        println!("{:?}", first_sector_triangle.points);
+        // let first_sector_triangle_vec = &sector_id_to_triangulated_polygons[first_sector_id];
 
-        // Build a tree of sector relationships? Root node pointing to un-connected siblings.
-        // https://en.wikipedia.org/wiki/M-ary_tree ?
-        // Any sectors with child sectors contain said child sectors.
-        //
-        // Walk down tree, treating any child sectors as "holes" in geo crate lingo.
+        // let first_sector_triangle_vec_size = first_sector_triangle_vec.size();
+
+        // for i in 0..first_sector_triangle_vec_size {
+        //     let triangle = first_sector_triangle_vec.get_triangle(i);
+
+        //     println!("{:?}", triangle.points);
+        // }
+
+        let mut result: HashMap<usize, Vec<ModelVertex>> = HashMap::new();
+
+        for (sector_id, triangulated_polygon) in sector_id_to_triangulated_polygons {
+            let triangles_count = triangulated_polygon.size();
+
+            let sector_floor_and_ceiling_height = self.sector_id_to_floor_and_ceiling_height.get(&sector_id).unwrap();
+
+            for i in 0..triangles_count {
+                let triangle = triangulated_polygon.get_triangle(i);
+
+                for point in triangle.points {
+                    let floor_vertex = ModelVertex {
+                        position: [
+                            point[0] as f32,
+                            sector_floor_and_ceiling_height.floor_height,
+                            point[1] as f32,
+                        ]
+                        .into(),
+                        tex_coords: [0.0, 1.0].into(),
+                        normal: [0.0, 0.0, 1.0].into(),
+                        // We'll calculate these later
+                        tangent: [0.0; 3].into(),
+                        bitangent: [0.0; 3].into(),
+                    };
+
+                    let entry = result.entry(sector_id).or_insert(Vec::new());
+                    entry.push(floor_vertex);
+                }
+            }
+        }
+
+        return result;
     }
 }
 
