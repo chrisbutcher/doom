@@ -4,10 +4,15 @@ use anyhow::*;
 use std::ops::Range;
 
 use geo::algorithm::concave_hull::ConcaveHull;
+use geo::algorithm::convex_hull::ConvexHull;
 use geo::prelude::Contains;
 use geo::{LineString, Polygon};
 
 use wgpu::util::DeviceExt;
+
+use svg::node::element::path::Data;
+use svg::node::element::Path;
+use svg::Document;
 
 use crate::texture;
 
@@ -273,9 +278,12 @@ impl Model {
                 );
 
                 // Test only with sectors 1 and 2.
-                if front_sidedef.sector_facing == 0 || front_sidedef.sector_facing == 1 {
-                    floor_builder.track_sector_boundaries(front_sidedef.sector_facing, start_vertex, end_vertex);
-                }
+                // if front_sidedef.sector_facing == 0
+                //     || front_sidedef.sector_facing == 1
+                //     || front_sidedef.sector_facing == 31
+                // {
+                floor_builder.track_sector_boundaries(front_sector.sector_index, start_vertex, end_vertex);
+                // }
 
                 (Some(front_sidedef), Some(front_sector))
             } else {
@@ -285,6 +293,8 @@ impl Model {
             let (back_sidedef, back_sector) = if let Some(back_sidedef_index) = line.back_sidedef_index {
                 let back_sidedef = &scene.map.sidedefs[back_sidedef_index];
                 let back_sector = &scene.map.sectors[back_sidedef.sector_facing];
+
+                floor_builder.track_sector_boundaries(back_sector.sector_index, start_vertex, end_vertex);
 
                 (Some(back_sidedef), Some(back_sector))
             } else {
@@ -322,6 +332,7 @@ impl Model {
 
         floor_builder.build_floors();
 
+        floor_builder.debug_draw_floor_svg(&scene.map);
         floor_builder.build_floor_meshes(device, &mut meshes);
 
         Ok(Self { meshes, materials })
@@ -367,6 +378,101 @@ impl FloorBuilder {
         }
     }
 
+    pub fn debug_draw_floor_svg(&self, map: &maps::Map) {
+        let mut document = Document::new();
+
+        let map_x_offset = 0 - map.map_centerer.left_most_x;
+        let map_y_offset = 0 - map.map_centerer.upper_most_y;
+
+        for line in &map.linedefs {
+            let v1_index = line.start_vertex;
+            let v2_index = line.end_vertex;
+
+            let v1 = &map.vertexes[v1_index];
+            let v2 = &map.vertexes[v2_index];
+
+            let v1_x = v1.x + map_x_offset;
+            let v2_x = v2.x + map_x_offset;
+            let v1_y = v1.y + map_y_offset;
+            let v2_y = v2.y + map_y_offset;
+
+            let path = Path::new()
+                .set("fill", "none")
+                .set("stroke", "black")
+                .set("stroke-width", 10)
+                .set(
+                    "d",
+                    Data::new()
+                        .move_to((v1_x, -v1_y)) // flipping y axis at the last moment to account for SVG convention
+                        .line_to((v2_x, -v2_y))
+                        .close(),
+                );
+
+            document = document.clone().add(path);
+        }
+
+        let mut vertex_pairs: Vec<[ModelVertex; 2]> = Vec::new();
+
+        for (_, vertices) in &self.sector_id_to_floor_vertices {
+            let vertices_length = vertices.len();
+
+            for i in 0..vertices_length {
+                let from_vertex = vertices[i];
+                let to_vertex;
+
+                // Loop last vertex back to first
+                if i == vertices_length - 1 {
+                    to_vertex = vertices[0];
+                } else {
+                    to_vertex = vertices[i + 1];
+                };
+
+                vertex_pairs.push([from_vertex, to_vertex]);
+            }
+        }
+
+        for pair in vertex_pairs {
+            let v1 = pair[0];
+            let v2 = pair[1];
+
+            let v1_x = v1.position[0] as i16 + map_x_offset;
+            let v2_x = v2.position[0] as i16 + map_x_offset;
+            let v1_y = v1.position[2] as i16 + map_y_offset;
+            let v2_y = v2.position[2] as i16 + map_y_offset;
+
+            let path = Path::new()
+                .set("fill", "none")
+                .set("stroke", "black")
+                .set("stroke-width", 10)
+                .set(
+                    "d",
+                    Data::new()
+                        .move_to((v1_x, -v1_y)) // flipping y axis at the last moment to account for SVG convention
+                        .line_to((v2_x, -v2_y))
+                        .close(),
+                );
+
+            document = document.clone().add(path);
+        }
+
+        let filename = format!(
+            "{}{}{}{} -- with floors.svg",
+            map.name.chars().nth(0).unwrap(),
+            map.name.chars().nth(1).unwrap(),
+            map.name.chars().nth(2).unwrap(),
+            map.name.chars().nth(3).unwrap(),
+        );
+
+        let width = map.map_centerer.right_most_x - map.map_centerer.left_most_x;
+        let height = map.map_centerer.upper_most_y - map.map_centerer.lower_most_y;
+        document = document
+            .clone()
+            .set("viewBox", (-10, -10, width as i32 * 5, height as i32 * 5))
+            .set("width", width)
+            .set("height", height);
+        svg::save(filename.trim(), &document).unwrap();
+    }
+
     pub fn track_sector_boundaries(
         &mut self,
         sector_index: usize,
@@ -401,10 +507,14 @@ impl FloorBuilder {
     pub fn build_floors(&mut self) {
         let mut all_sector_polygons = vec![];
 
+        let mut sector_id_to_geo_lines: Vec<_> = self.sector_id_to_geo_lines.iter().collect();
         let mut sector_id_to_ordered_geo_lines: HashMap<usize, Vec<GeoLine>> = HashMap::new();
 
+        // Sort geo lines by sector ID, s  we always try to do ordering in the same order.
+        sector_id_to_geo_lines.sort_by_key(|a| a.0);
+
         // Build up an ordered set of geo lines, such that the starting line ends with the 2nd line's start, etc.
-        for (sector_id, unordered_geo_lines) in &self.sector_id_to_geo_lines {
+        for (sector_id, unordered_geo_lines) in sector_id_to_geo_lines.iter() {
             let mut ordered_geo_lines = vec![];
             let mut unordered_geo_lines_copy = Vec::with_capacity(unordered_geo_lines.len());
             unordered_geo_lines_copy.clone_from(unordered_geo_lines);
@@ -412,30 +522,53 @@ impl FloorBuilder {
             ordered_geo_lines.push(unordered_geo_lines_copy[0]);
             unordered_geo_lines_copy.remove(0);
 
+            if **sector_id == 31 {
+                println!("unordered_geo_lines for sector 31:");
+                println!("{:?}", unordered_geo_lines);
+            }
+
             // repeat process, inserting first element with .from that matches .to from last existing element
             // ...
-            while unordered_geo_lines_copy.len() > 0 {
+            while ordered_geo_lines.len() < unordered_geo_lines_copy.len() {
+                // while unordered_geo_lines_copy.len() > 0 {
                 let last_ordered_line = ordered_geo_lines.last().unwrap();
 
-                let next_line_index = unordered_geo_lines_copy
-                    .iter()
-                    .position(|line| line.from.x == last_ordered_line.to.x && line.from.y == last_ordered_line.to.y);
+                let next_line_index = unordered_geo_lines_copy.iter().position(|line| {
+                    (line.from.x == last_ordered_line.to.x && line.from.y == last_ordered_line.to.y)
+                        || (line.to.x == last_ordered_line.from.x && line.to.y == last_ordered_line.from.y)
+                });
 
                 if let Some(next_line_index) = next_line_index {
                     ordered_geo_lines.push(unordered_geo_lines_copy[next_line_index]);
-                    unordered_geo_lines_copy.remove(next_line_index);
+                    // unordered_geo_lines_copy.remove(next_line_index);
                 } else {
-                    panic!("Found a disconnect line in a sector at {:?}", last_ordered_line);
-                }
+                    // TODO: Convert to panic, until vertex/line data is cleaned up?
+                    println!(
+                        "Found a disconnect line in a sector {} at {:?}",
+                        sector_id, last_ordered_line
+                    );
 
-                // TODO break if there are no matching elements, to avoid an infinite loop.
+                    println!("ordered_geo_lines:");
+                    println!("{:?}", ordered_geo_lines);
+
+                    println!("----");
+
+                    println!("unordered_geo_lines_copy:");
+                    println!("{:?}", unordered_geo_lines_copy);
+
+                    panic!("stop");
+
+                    // Just connect last line if nothing else seems to connect to it, to avoid an infinite loop.
+                    // let last_line = unordered_geo_lines_copy.remove(0);
+                    // ordered_geo_lines.push(last_line);
+                }
             }
 
             // push result, tied to sector id.
-            sector_id_to_ordered_geo_lines.insert(*sector_id, ordered_geo_lines);
+            sector_id_to_ordered_geo_lines.insert(**sector_id, ordered_geo_lines);
         }
 
-        for (sector_id, ordered_geo_lines) in &sector_id_to_ordered_geo_lines {
+        for (sector_id, ordered_geo_lines) in &self.sector_id_to_geo_lines {
             let mut polygon_linestring_tuples: Vec<(f32, f32)> = ordered_geo_lines
                 .iter()
                 .flat_map(|line| vec![(line.from.x, line.from.y), (line.to.x, line.to.y)])
@@ -455,16 +588,16 @@ impl FloorBuilder {
 
         // Use geo crate to find containing sectors, to use with poly2tri crate which handles triangulation w/ holes.
         for (i_index, x) in all_sector_polygons.iter().enumerate() {
+            let entry = parent_polygons_indices_to_child_polygon_indices
+                .entry(i_index)
+                .or_insert(Vec::new());
+
             for (j_index, y) in all_sector_polygons.iter().enumerate() {
                 if i_index == j_index {
                     continue;
                 }
 
                 if x.polygon.contains(&y.polygon) {
-                    let entry = parent_polygons_indices_to_child_polygon_indices
-                        .entry(i_index)
-                        .or_insert(Vec::new());
-
                     entry.push(j_index);
 
                     println!("Sector {} contains Sector {}", x.sector_id, y.sector_id);
