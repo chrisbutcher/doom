@@ -747,6 +747,16 @@ impl FloorBuilder {
                 sector_id_to_triangulated_polygons.insert(child_polygon.sector_id, child_triangulation_result);
             }
 
+            //   _   _  ____ _______ ______
+            //  | \ | |/ __ \__   __|  ____|
+            //  |  \| | |  | | | |  | |__
+            //  | . ` | |  | | | |  |  __|
+            //  | |\  | |__| | | |  | |____
+            //  |_| \_|\____/  |_|  |______|
+
+            // poly2tri (https://crates.io/crates/poly2tri) seems to be broken. It was last maintained 5 years ago, and has fewer downloads than
+            // https://crates.io/crates/earcutr which is more recently updated and has more downloads.
+
             println!("Attempting to triangulate parent sector {}", parent_polygon.sector_id);
             let parent_triangulation_result = parent_triangulation.triangulate();
             sector_id_to_triangulated_polygons.insert(parent_polygon.sector_id, parent_triangulation_result);

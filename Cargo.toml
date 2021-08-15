@@ -22,6 +22,7 @@ lyon = "0.17.5"
 
 geo = "0.17.1"
 poly2tri = "0.1.0"
+earcutr = "0.2.0"
 
 [build-dependencies]
 anyhow = "1.0"
