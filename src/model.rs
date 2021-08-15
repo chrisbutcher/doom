@@ -607,14 +607,8 @@ impl FloorBuilder {
                     // https://medium.com/@jmickle_/build-a-model-of-a-doom-level-7283addf009f
                     println!("Cannot find next line leading to: {:?}", last_ordered_line);
 
-                    // println!("ordered_geo_lines:");
-                    // println!("{:?}", ordered_geo_lines);
-
-                    // println!("unordered_geo_lines_copy:");
-                    // println!("{:?}", unordered_geo_lines_copy);
-
+                    // Give up trying to find connections between non-line-connected sectors.
                     break;
-                    // panic!("Boom");
                 }
             }
 
@@ -622,15 +616,6 @@ impl FloorBuilder {
                 .iter()
                 .flat_map(|line| vec![(line.from.x, line.from.y), (line.to.x, line.to.y)])
                 .collect();
-
-            // let mut polygon_linestring_tuples = vec![
-            //     (1216.0, -2880.0),
-            //     (1248.0, -2528.0),
-            //     (1472.0, -2432.0),
-            //     (1472.0, -2560.0),
-            //     (1384.0, -2592.0),
-            //     (1344.0, -2880.0),
-            // ];
 
             polygon_linestring_tuples.dedup();
 
@@ -641,10 +626,10 @@ impl FloorBuilder {
                 println!("{:?}", line_string);
             }
 
-            // I think ordering matters, and we need to build sectors in order, and not rely on convex/concave hull
+            // Ordering matters, and we need to build sectors in order, and not rely on convex/concave hull
             let polygon = Polygon::new(line_string, vec![]);
-            // let polygon = polygon.convex_hull();
-            // let polygon = polygon.concave_hull(0.1);
+            // let polygon = polygon.convex_hull(); // Both of these seem to draw incorrect polygon bounds...
+            // let polygon = polygon.concave_hull(0.1); // ignoring actual concavity of C-shaped sectors, for example.
 
             if *sector_id == 24 {
                 println!("Sector {} polygon:", *sector_id);
@@ -699,8 +684,6 @@ impl FloorBuilder {
 
         // Simply associating all child polygon array indices with parent array indices.
         // Walking through all child polygons, and pushing all of them as interiors on parent polygons.
-        //
-        // Not really sure of this approach.
         for (parent_polygon_index, children_polygon_indices) in sorted_parent_polygons_indices_to_child_polygon_indices
         {
             let parent_polygon = &all_sector_polygons[*parent_polygon_index];
@@ -712,7 +695,6 @@ impl FloorBuilder {
                 || parent_polygon.sector_id == 42
                 || parent_polygon.sector_id == 28
             {
-                // if parent_polygon.sector_id != 24 {
                 println!(
                     "Skipping triangulating for parent sector ID: {}",
                     parent_polygon.sector_id
@@ -754,7 +736,6 @@ impl FloorBuilder {
                     poly2tri_child_polygon_for_mesh.add_point(point.x() as f64, point.y() as f64);
                 }
 
-                // TODO: Temporarily turning off hole punching
                 parent_triangulation.add_hole(poly2tri_child_polygon_for_hole);
 
                 let child_triangulation = poly2tri::CDT::new(poly2tri_child_polygon_for_mesh);
@@ -790,9 +771,11 @@ impl FloorBuilder {
             for i in 0..triangles_count {
                 let triangle = triangulated_polygon.get_triangle(i);
 
+                // TODO: Sort triangle points by CCW winding order.
                 for point in triangle.points {
+                    // NOTE: wgpu uses a flipped z axis coordinate system.
                     let floor_vertex = ModelVertex {
-                        position: [point[0] as f32, floor_height, point[1] as f32].into(),
+                        position: [point[0] as f32, floor_height, -point[1] as f32].into(),
                         tex_coords: [0.0, 1.0].into(),
                         normal: [0.0, 0.1, 0.0].into(),
                         // We'll calculate these later
