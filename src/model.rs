@@ -1,11 +1,15 @@
 pub use super::*;
 
+use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
+
 use anyhow::*;
 use std::ops::Range;
 
 use geo::algorithm::concave_hull::ConcaveHull;
 use geo::algorithm::convex_hull::ConvexHull;
 use geo::prelude::Contains;
+use geo::winding_order::Winding;
 use geo::{LineString, Polygon};
 
 use wgpu::util::DeviceExt;
@@ -356,11 +360,46 @@ pub struct GeoLine {
     pub linedef_index: usize,
 }
 
+impl GeoLine {
+    pub fn swap_from_and_to(&mut self) {
+        let temp_from = self.from;
+        self.from = self.to;
+        self.to = temp_from;
+    }
+}
+
+// impl PartialEq for GeoLine {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.from.x == other.from.x
+//             && self.from.y == other.from.y
+//             && self.to.x == other.to.x
+//             && self.to.y == other.to.y
+//             && self.linedef_index == other.linedef_index
+//     }
+// }
+
+// impl Eq for GeoLine {}
+
+// impl Hash for GeoLine {
+//     fn hash<H: Hasher>(&self, state: &mut H) {
+//         self.from.hash(state);
+//         self.to.hash(state);
+//         self.linedef_index.hash(state);
+//     }
+// }
+
 #[derive(Copy, Clone, Debug)]
 pub struct GeoVertex {
     pub x: f32,
     pub y: f32,
 }
+
+// impl Hash for GeoVertex {
+//     fn hash<H: Hasher>(&self, state: &mut H) {
+//         (self.x as i32).hash(state);
+//         (self.y as i32).hash(state);
+//     }
+// }
 
 #[derive(Debug)]
 pub struct SectorPolygon {
@@ -520,83 +559,107 @@ impl FloorBuilder {
     pub fn build_floors(&mut self) {
         let mut all_sector_polygons = vec![];
 
-        let mut sector_id_to_geo_lines: Vec<_> = self.sector_id_to_geo_lines.iter().collect();
-        let mut sector_id_to_ordered_geo_lines: HashMap<usize, Vec<GeoLine>> = HashMap::new();
+        let mut sorted_sector_id_to_geo_lines: Vec<(&usize, &Vec<GeoLine>)> =
+            self.sector_id_to_geo_lines.iter().collect();
 
-        // Sort geo lines by sector ID, s  we always try to do ordering in the same order.
-        sector_id_to_geo_lines.sort_by_key(|a| a.0);
+        sorted_sector_id_to_geo_lines.sort_by_key(|a| a.0);
 
-        // Build up an ordered set of geo lines, such that the starting line ends with the 2nd line's start, etc.
-        for (sector_id, unordered_geo_lines) in sector_id_to_geo_lines.iter() {
-            let mut ordered_geo_lines = vec![];
+        for (sector_id, unordered_geo_lines) in sorted_sector_id_to_geo_lines {
+            let mut ordered_geo_lines = Vec::new();
             let mut unordered_geo_lines_copy = Vec::with_capacity(unordered_geo_lines.len());
             unordered_geo_lines_copy.clone_from(unordered_geo_lines);
 
+            // Initialized ordered set with the first geo line
             ordered_geo_lines.push(unordered_geo_lines_copy[0]);
             unordered_geo_lines_copy.remove(0);
 
-            if **sector_id == 31 {
-                println!("unordered_geo_lines for sector 31:");
-                println!("{:?}", unordered_geo_lines);
-            }
-
-            // repeat process, inserting first element with .from that matches .to from last existing element
-            // ...
-            while ordered_geo_lines.len() < unordered_geo_lines_copy.len() {
-                // while unordered_geo_lines_copy.len() > 0 {
+            while unordered_geo_lines_copy.len() != 0 {
                 let dupe = ordered_geo_lines.clone();
                 let last_ordered_line = dupe.last().unwrap();
 
-                let next_line_index = unordered_geo_lines_copy
-                    .iter()
-                    .position(|line| line.from.x == last_ordered_line.to.x && line.from.y == last_ordered_line.to.y);
+                let mut found_next_line = false;
 
-                if let Some(next_line_index) = next_line_index {
-                    ordered_geo_lines.push(unordered_geo_lines_copy[next_line_index]);
-                    unordered_geo_lines_copy.remove(next_line_index);
-                } else {
-                    // TODO: Convert to panic, until vertex/line data is cleaned up?
-                    println!(
-                        "Found a disconnect line in a sector {} at {:?}",
-                        sector_id, last_ordered_line
-                    );
+                for i in 0..unordered_geo_lines_copy.len() {
+                    let mut candidate_next_line = unordered_geo_lines_copy[i];
 
-                    println!("ordered_geo_lines:");
-                    println!("{:?}", ordered_geo_lines);
+                    if candidate_next_line.from.x as i32 == last_ordered_line.to.x as i32
+                        && candidate_next_line.from.y as i32 == last_ordered_line.to.y as i32
+                    {
+                        found_next_line = true;
+                        ordered_geo_lines.push(candidate_next_line);
+                        unordered_geo_lines_copy.remove(i);
+                        break;
+                    } else if candidate_next_line.to.x as i32 == last_ordered_line.to.x as i32
+                        && candidate_next_line.to.y as i32 == last_ordered_line.to.y as i32
+                    {
+                        candidate_next_line.swap_from_and_to();
 
-                    println!("----");
+                        found_next_line = true;
+                        ordered_geo_lines.push(candidate_next_line);
+                        unordered_geo_lines_copy.remove(i);
+                        break;
+                    }
+                }
 
-                    println!("unordered_geo_lines_copy:");
-                    println!("{:?}", unordered_geo_lines_copy);
+                if found_next_line == false {
+                    // TODO: Need to handle slicing out inner sectors, as in section with
+                    // "Two potential situations for non-contiguous sets of lines." in
+                    // https://medium.com/@jmickle_/build-a-model-of-a-doom-level-7283addf009f
+                    println!("Cannot find next line leading to: {:?}", last_ordered_line);
 
-                    panic!("stop");
+                    // println!("ordered_geo_lines:");
+                    // println!("{:?}", ordered_geo_lines);
 
-                    // Just connect last line if nothing else seems to connect to it, to avoid an infinite loop.
-                    // let last_line = unordered_geo_lines_copy.remove(0);
-                    // ordered_geo_lines.push(last_line);
+                    // println!("unordered_geo_lines_copy:");
+                    // println!("{:?}", unordered_geo_lines_copy);
+
+                    break;
+                    // panic!("Boom");
                 }
             }
 
-            // push result, tied to sector id.
-            sector_id_to_ordered_geo_lines.insert(**sector_id, ordered_geo_lines);
-        }
-
-        for (sector_id, ordered_geo_lines) in &self.sector_id_to_geo_lines {
             let mut polygon_linestring_tuples: Vec<(f32, f32)> = ordered_geo_lines
                 .iter()
                 .flat_map(|line| vec![(line.from.x, line.from.y), (line.to.x, line.to.y)])
                 .collect();
 
+            // let mut polygon_linestring_tuples = vec![
+            //     (1216.0, -2880.0),
+            //     (1248.0, -2528.0),
+            //     (1472.0, -2432.0),
+            //     (1472.0, -2560.0),
+            //     (1384.0, -2592.0),
+            //     (1344.0, -2880.0),
+            // ];
+
             polygon_linestring_tuples.dedup();
+
+            let line_string = LineString::from(polygon_linestring_tuples);
+
+            if *sector_id == 24 {
+                println!("Sector {} line string:", *sector_id);
+                println!("{:?}", line_string);
+            }
+
+            // I think ordering matters, and we need to build sectors in order, and not rely on convex/concave hull
+            let polygon = Polygon::new(line_string, vec![]);
+            // let polygon = polygon.convex_hull();
+            // let polygon = polygon.concave_hull(0.1);
+
+            if *sector_id == 24 {
+                println!("Sector {} polygon:", *sector_id);
+                println!("{:?}", polygon);
+            }
 
             let sector_polygon = SectorPolygon {
                 sector_id: *sector_id,
-                polygon: Polygon::new(LineString::from(polygon_linestring_tuples), vec![]), // .concave_hull(2.0), // or try convex hull ?
+                polygon: polygon,
             };
 
             all_sector_polygons.push(sector_polygon);
         }
 
+        // REMINDER: This indexes by element index in all_sector_polygons, NOT sector ID.
         let mut parent_polygons_indices_to_child_polygon_indices: HashMap<usize, Vec<usize>> = HashMap::new();
 
         // Use geo crate to find containing sectors, to use with poly2tri crate which handles triangulation w/ holes.
@@ -611,25 +674,53 @@ impl FloorBuilder {
                 }
 
                 if x.polygon.contains(&y.polygon) {
+                    if x.sector_id == 42 && y.sector_id == 44 {
+                        println!("Sector {} polygon ...", x.sector_id);
+                        println!("{:?}", x.polygon);
+                        println!("Apparently contains sector {} polygon:", y.sector_id);
+                        println!("{:?}", y.polygon);
+                    }
+
                     entry.push(j_index);
 
-                    println!("Sector {} contains Sector {}", x.sector_id, y.sector_id);
+                    // println!("Sector {} contains Sector {}", x.sector_id, y.sector_id);
                 } else {
-                    println!("Sector {} does NOT contain Sector {}", x.sector_id, y.sector_id);
+                    // println!("Sector {} does NOT contain Sector {}", x.sector_id, y.sector_id);
                 }
             }
         }
 
         let mut sector_id_to_triangulated_polygons: HashMap<usize, poly2tri::TriangleVec> = HashMap::new();
 
+        let mut sorted_parent_polygons_indices_to_child_polygon_indices: Vec<(&usize, &Vec<usize>)> =
+            parent_polygons_indices_to_child_polygon_indices.iter().collect();
+
+        sorted_parent_polygons_indices_to_child_polygon_indices.sort_by_key(|a| a.0);
+
         // Simply associating all child polygon array indices with parent array indices.
         // Walking through all child polygons, and pushing all of them as interiors on parent polygons.
         //
         // Not really sure of this approach.
-        for (parent_polygon_id, children_polygon_ids) in parent_polygons_indices_to_child_polygon_indices {
-            println!("Triangulating parent sector ID: {}", parent_polygon_id);
+        for (parent_polygon_index, children_polygon_indices) in sorted_parent_polygons_indices_to_child_polygon_indices
+        {
+            let parent_polygon = &all_sector_polygons[*parent_polygon_index];
 
-            let parent_polygon = &all_sector_polygons[parent_polygon_id];
+            // Skipping very concave sectors, sectors with complex inner/own holes.
+            if parent_polygon.sector_id == 15
+                || parent_polygon.sector_id == 32
+                || parent_polygon.sector_id == 40
+                || parent_polygon.sector_id == 42
+                || parent_polygon.sector_id == 28
+            {
+                // if parent_polygon.sector_id != 24 {
+                println!(
+                    "Skipping triangulating for parent sector ID: {}",
+                    parent_polygon.sector_id
+                );
+                continue;
+            }
+
+            println!("Triangulating parent sector ID: {}", parent_polygon.sector_id);
 
             let mut poly2tri_parent_polygon = poly2tri::Polygon::new();
 
@@ -643,10 +734,13 @@ impl FloorBuilder {
 
             let mut parent_triangulation = poly2tri::CDT::new(poly2tri_parent_polygon);
 
-            for child_polygon_id in children_polygon_ids {
-                println!("Triangulating child sector ID: {}", child_polygon_id);
+            for child_polygon_index in children_polygon_indices {
+                let child_polygon = &all_sector_polygons[*child_polygon_index];
 
-                let child_polygon = &all_sector_polygons[child_polygon_id];
+                println!(
+                    "Triangulating child sector ID: {}, child of sector ID: {}",
+                    child_polygon.sector_id, parent_polygon.sector_id
+                );
 
                 let mut poly2tri_child_polygon_for_hole = poly2tri::Polygon::new();
                 let mut poly2tri_child_polygon_for_mesh = poly2tri::Polygon::new();
@@ -660,13 +754,20 @@ impl FloorBuilder {
                     poly2tri_child_polygon_for_mesh.add_point(point.x() as f64, point.y() as f64);
                 }
 
+                // TODO: Temporarily turning off hole punching
                 parent_triangulation.add_hole(poly2tri_child_polygon_for_hole);
 
                 let child_triangulation = poly2tri::CDT::new(poly2tri_child_polygon_for_mesh);
-                sector_id_to_triangulated_polygons.insert(child_polygon_id, child_triangulation.triangulate());
+
+                println!("Attempting to triangulate child sector {}", child_polygon.sector_id);
+                let child_triangulation_result = child_triangulation.triangulate();
+
+                sector_id_to_triangulated_polygons.insert(child_polygon.sector_id, child_triangulation_result);
             }
 
-            sector_id_to_triangulated_polygons.insert(parent_polygon_id, parent_triangulation.triangulate());
+            println!("Attempting to triangulate parent sector {}", parent_polygon.sector_id);
+            let parent_triangulation_result = parent_triangulation.triangulate();
+            sector_id_to_triangulated_polygons.insert(parent_polygon.sector_id, parent_triangulation_result);
         }
 
         let mut result: HashMap<usize, Vec<ModelVertex>> = HashMap::new();
@@ -676,19 +777,22 @@ impl FloorBuilder {
 
             let triangles_count = triangulated_polygon.size();
 
-            let sector_floor_and_ceiling_height = self.sector_id_to_floor_and_ceiling_height.get(&sector_id).unwrap();
+            let floor_height;
+            let sector_floor_and_ceiling_height = self.sector_id_to_floor_and_ceiling_height.get(&sector_id);
+
+            if let Some(sector_floor_and_ceiling_height) = sector_floor_and_ceiling_height {
+                floor_height = sector_floor_and_ceiling_height.floor_height;
+            } else {
+                floor_height = 0.0;
+                println!("Could not fetch floor height for sector {}", sector_id);
+            }
 
             for i in 0..triangles_count {
                 let triangle = triangulated_polygon.get_triangle(i);
 
                 for point in triangle.points {
                     let floor_vertex = ModelVertex {
-                        position: [
-                            point[0] as f32,
-                            sector_floor_and_ceiling_height.floor_height,
-                            point[1] as f32,
-                        ]
-                        .into(),
+                        position: [point[0] as f32, floor_height, point[1] as f32].into(),
                         tex_coords: [0.0, 1.0].into(),
                         normal: [0.0, 0.1, 0.0].into(),
                         // We'll calculate these later
