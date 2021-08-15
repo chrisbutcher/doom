@@ -19,6 +19,8 @@ use svg::node::element::path::Data;
 use svg::node::element::Path;
 use svg::Document;
 
+extern crate earcutr;
+
 use crate::texture;
 
 pub trait Vertex {
@@ -718,6 +720,8 @@ impl FloorBuilder {
             let mut parent_triangulation = poly2tri::CDT::new(poly2tri_parent_polygon);
 
             for child_polygon_index in children_polygon_indices {
+                continue; // TEMPORARILY SHUTTING OFF CHILD POLY TRIANGULATION
+
                 let child_polygon = &all_sector_polygons[*child_polygon_index];
 
                 println!(
