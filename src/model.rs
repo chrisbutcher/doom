@@ -10,7 +10,8 @@ use geo::algorithm::concave_hull::ConcaveHull;
 use geo::algorithm::convex_hull::ConvexHull;
 use geo::prelude::Contains;
 use geo::winding_order::Winding;
-use geo::{LineString, Polygon};
+use geo::{Coordinate, LineString, Polygon};
+// use geo_types::{Coordinate, LineString};
 
 use wgpu::util::DeviceExt;
 
@@ -481,19 +482,19 @@ impl FloorBuilder {
             }
         }
 
-        for pair in vertex_pairs {
+        for pair in &vertex_pairs {
             let v1 = pair[0];
             let v2 = pair[1];
 
             let v1_x = v1.position[0] as i16 + map_x_offset;
             let v2_x = v2.position[0] as i16 + map_x_offset;
-            let v1_y = v1.position[2] as i16 + map_y_offset;
-            let v2_y = v2.position[2] as i16 + map_y_offset;
+            let v1_y = -v1.position[2] as i16 + map_y_offset;
+            let v2_y = -v2.position[2] as i16 + map_y_offset;
 
             let path = Path::new()
                 .set("fill", "none")
-                .set("stroke", "black")
-                .set("stroke-width", 10)
+                .set("stroke", "red")
+                .set("stroke-width", 6)
                 .set(
                     "d",
                     Data::new()
@@ -621,7 +622,7 @@ impl FloorBuilder {
 
             let line_string = LineString::from(polygon_linestring_tuples);
 
-            if *sector_id == 24 {
+            if *sector_id == 58 {
                 println!("Sector {} line string:", *sector_id);
                 println!("{:?}", line_string);
             }
@@ -631,7 +632,7 @@ impl FloorBuilder {
             // let polygon = polygon.convex_hull(); // Both of these seem to draw incorrect polygon bounds...
             // let polygon = polygon.concave_hull(0.1); // ignoring actual concavity of C-shaped sectors, for example.
 
-            if *sector_id == 24 {
+            if *sector_id == 58 {
                 println!("Sector {} polygon:", *sector_id);
                 println!("{:?}", polygon);
             }
@@ -771,11 +772,30 @@ impl FloorBuilder {
             for i in 0..triangles_count {
                 let triangle = triangulated_polygon.get_triangle(i);
 
+                // let ccw_ordered_triangle;
+
+                let mut ccw_ordered_triangle = LineString(vec![
+                    Coordinate {
+                        x: triangle.points[0][0],
+                        y: triangle.points[0][1],
+                    },
+                    Coordinate {
+                        x: triangle.points[2][0],
+                        y: triangle.points[2][1],
+                    },
+                    Coordinate {
+                        x: triangle.points[1][0],
+                        y: triangle.points[1][1],
+                    },
+                ]);
+
+                ccw_ordered_triangle.make_ccw_winding();
+
                 // TODO: Sort triangle points by CCW winding order.
                 for point in triangle.points {
-                    // NOTE: wgpu uses a flipped z axis coordinate system.
+                    // for point in ccw_ordered_triangle {
                     let floor_vertex = ModelVertex {
-                        position: [point[0] as f32, floor_height, -point[1] as f32].into(),
+                        position: [point[0] as f32, floor_height, -point[1] as f32].into(), // NOTE: wgpu uses a flipped z axis coordinate system.
                         tex_coords: [0.0, 1.0].into(),
                         normal: [0.0, 0.1, 0.0].into(),
                         // We'll calculate these later
