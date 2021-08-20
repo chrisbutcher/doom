@@ -678,7 +678,7 @@ impl FloorBuilder {
             }
         }
 
-        let mut sector_id_to_triangulated_polygons: HashMap<usize, poly2tri::TriangleVec> = HashMap::new();
+        let mut sector_id_to_triangulated_polygons: HashMap<usize, (Vec<Vec<f32>>, Vec<usize>)> = HashMap::new();
 
         let mut sorted_parent_polygons_indices_to_child_polygon_indices: Vec<(&usize, &Vec<usize>)> =
             parent_polygons_indices_to_child_polygon_indices.iter().collect();
@@ -707,17 +707,19 @@ impl FloorBuilder {
 
             println!("Triangulating parent sector ID: {}", parent_polygon.sector_id);
 
-            let mut poly2tri_parent_polygon = poly2tri::Polygon::new();
+            let mut polygon_with_holes_data: Vec<Vec<Vec<f32>>> = vec![];
+            let mut parent_polygon_data: Vec<Vec<f32>> = vec![];
 
             let p_points = parent_polygon.polygon.exterior().clone().into_points();
             let p_points_len = p_points.len();
 
             // Exclude last point, since poly2tri library panics on duplicated points in a polygon
             for point in p_points.iter().take(p_points_len - 1) {
-                poly2tri_parent_polygon.add_point(point.x() as f64, point.y() as f64);
+                // poly2tri_parent_polygon.add_point(point.x() as f64, point.y() as f64);
+                parent_polygon_data.push(vec![point.x(), point.y()]);
             }
 
-            let mut parent_triangulation = poly2tri::CDT::new(poly2tri_parent_polygon);
+            polygon_with_holes_data.push(parent_polygon_data.clone());
 
             for child_polygon_index in children_polygon_indices {
                 continue; // TEMPORARILY SHUTTING OFF CHILD POLY TRIANGULATION
@@ -729,26 +731,39 @@ impl FloorBuilder {
                     child_polygon.sector_id, parent_polygon.sector_id
                 );
 
-                let mut poly2tri_child_polygon_for_hole = poly2tri::Polygon::new();
-                let mut poly2tri_child_polygon_for_mesh = poly2tri::Polygon::new();
+                // let mut poly2tri_child_polygon_for_hole = poly2tri::Polygon::new();
+                // let mut poly2tri_child_polygon_for_mesh = poly2tri::Polygon::new();
+
+                // For parent holes
+                let mut child_polygon_for_hole_and_own_triangles: Vec<Vec<f32>> = vec![];
+
+                // For child, without holes
+                let mut child_polygon_without_holes_data: Vec<Vec<Vec<f32>>> = vec![];
+                // let mut child_polygon_data: Vec<Vec<f32>> = vec![];
 
                 let c_points = child_polygon.polygon.exterior().clone().into_points();
                 let c_points_len = c_points.len();
 
                 // Exclude last point, since poly2tri library panics on duplicated points in a polygon
                 for point in c_points.iter().take(c_points_len - 1) {
-                    poly2tri_child_polygon_for_hole.add_point(point.x() as f64, point.y() as f64);
-                    poly2tri_child_polygon_for_mesh.add_point(point.x() as f64, point.y() as f64);
+                    child_polygon_for_hole_and_own_triangles.push(vec![point.x(), point.y()]);
                 }
 
-                parent_triangulation.add_hole(poly2tri_child_polygon_for_hole);
-
-                let child_triangulation = poly2tri::CDT::new(poly2tri_child_polygon_for_mesh);
+                polygon_with_holes_data.push(child_polygon_for_hole_and_own_triangles.clone());
+                child_polygon_without_holes_data.push(child_polygon_for_hole_and_own_triangles.clone());
 
                 println!("Attempting to triangulate child sector {}", child_polygon.sector_id);
-                let child_triangulation_result = child_triangulation.triangulate();
 
-                sector_id_to_triangulated_polygons.insert(child_polygon.sector_id, child_triangulation_result);
+                let (child_vertices, child_holes, child_dimensions) =
+                    earcutr::flatten(&child_polygon_without_holes_data);
+                let child_triangles_indexed = earcutr::earcut(&child_vertices, &child_holes, child_dimensions);
+
+                // let child_triangulation_result = child_triangulation.triangulate();
+
+                sector_id_to_triangulated_polygons.insert(
+                    child_polygon.sector_id,
+                    (child_polygon_for_hole_and_own_triangles, child_triangles_indexed),
+                );
             }
 
             //   _   _  ____ _______ ______
@@ -758,12 +773,18 @@ impl FloorBuilder {
             //  | |\  | |__| | | |  | |____
             //  |_| \_|\____/  |_|  |______|
 
+            // Now using earcutr
             // poly2tri (https://crates.io/crates/poly2tri) seems to be broken. It was last maintained 5 years ago, and has fewer downloads than
             // https://crates.io/crates/earcutr which is more recently updated and has more downloads.
 
             println!("Attempting to triangulate parent sector {}", parent_polygon.sector_id);
-            let parent_triangulation_result = parent_triangulation.triangulate();
-            sector_id_to_triangulated_polygons.insert(parent_polygon.sector_id, parent_triangulation_result);
+            let (parent_vertices, parent_holes, parent_dimensions) = earcutr::flatten(&polygon_with_holes_data);
+            let parent_triangles_indexed = earcutr::earcut(&parent_vertices, &parent_holes, parent_dimensions);
+
+            sector_id_to_triangulated_polygons.insert(
+                parent_polygon.sector_id,
+                (parent_polygon_data, parent_triangles_indexed),
+            );
         }
 
         let mut result: HashMap<usize, Vec<ModelVertex>> = HashMap::new();
@@ -771,7 +792,7 @@ impl FloorBuilder {
         for (sector_id, triangulated_polygon) in sector_id_to_triangulated_polygons {
             println!("Building ModelVertexes for sector ID: {}", sector_id);
 
-            let triangles_count = triangulated_polygon.size();
+            let (parent_vertices, parent_triangles_indexed) = triangulated_polygon;
 
             let floor_height;
             let sector_floor_and_ceiling_height = self.sector_id_to_floor_and_ceiling_height.get(&sector_id);
@@ -783,43 +804,44 @@ impl FloorBuilder {
                 println!("Could not fetch floor height for sector {}", sector_id);
             }
 
-            for i in 0..triangles_count {
-                let triangle = triangulated_polygon.get_triangle(i);
+            for c in parent_triangles_indexed.chunks(3) {
+                let point_1_index = c[0];
+                let point_2_index = c[1];
+                let point_3_index = c[2];
 
-                // let ccw_ordered_triangle;
+                let point_1_data = &parent_vertices[point_1_index];
+                let point_2_data = &parent_vertices[point_2_index];
+                let point_3_data = &parent_vertices[point_3_index];
 
-                let mut ccw_ordered_triangle = LineString(vec![
-                    Coordinate {
-                        x: triangle.points[0][0],
-                        y: triangle.points[0][1],
-                    },
-                    Coordinate {
-                        x: triangle.points[2][0],
-                        y: triangle.points[2][1],
-                    },
-                    Coordinate {
-                        x: triangle.points[1][0],
-                        y: triangle.points[1][1],
-                    },
-                ]);
+                let entry = result.entry(sector_id).or_insert(Vec::new());
 
-                ccw_ordered_triangle.make_ccw_winding();
-
-                // TODO: Sort triangle points by CCW winding order.
-                for point in triangle.points {
-                    // for point in ccw_ordered_triangle {
-                    let floor_vertex = ModelVertex {
-                        position: [point[0] as f32, floor_height, -point[1] as f32].into(), // NOTE: wgpu uses a flipped z axis coordinate system.
-                        tex_coords: [0.0, 1.0].into(),
-                        normal: [0.0, 0.1, 0.0].into(),
-                        // We'll calculate these later
-                        tangent: [0.0; 3].into(),
-                        bitangent: [0.0; 3].into(),
-                    };
-
-                    let entry = result.entry(sector_id).or_insert(Vec::new());
-                    entry.push(floor_vertex);
-                }
+                let floor_vertex_1 = ModelVertex {
+                    position: [point_1_data[0], floor_height, -point_1_data[1] as f32].into(), // NOTE: wgpu uses a flipped z axis coordinate system.
+                    tex_coords: [0.0, 1.0].into(),
+                    normal: [0.0, 0.1, 0.0].into(),
+                    // We'll calculate these later
+                    tangent: [0.0; 3].into(),
+                    bitangent: [0.0; 3].into(),
+                };
+                entry.push(floor_vertex_1);
+                let floor_vertex_2 = ModelVertex {
+                    position: [point_2_data[0], floor_height, -point_2_data[1] as f32].into(), // NOTE: wgpu uses a flipped z axis coordinate system.
+                    tex_coords: [0.0, 1.0].into(),
+                    normal: [0.0, 0.1, 0.0].into(),
+                    // We'll calculate these later
+                    tangent: [0.0; 3].into(),
+                    bitangent: [0.0; 3].into(),
+                };
+                entry.push(floor_vertex_2);
+                let floor_vertex_3 = ModelVertex {
+                    position: [point_3_data[0], floor_height, -point_3_data[1] as f32].into(), // NOTE: wgpu uses a flipped z axis coordinate system.
+                    tex_coords: [0.0, 1.0].into(),
+                    normal: [0.0, 0.1, 0.0].into(),
+                    // We'll calculate these later
+                    tangent: [0.0; 3].into(),
+                    bitangent: [0.0; 3].into(),
+                };
+                entry.push(floor_vertex_3);
             }
         }
 
