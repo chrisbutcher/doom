@@ -571,7 +571,7 @@ impl FloorBuilder {
         sorted_sector_id_to_geo_lines.sort_by_key(|a| a.0);
 
         for (sector_id, unordered_geo_lines) in sorted_sector_id_to_geo_lines {
-            if *sector_id != 36 {
+            if *sector_id != 24 {
                 continue;
             }
 
