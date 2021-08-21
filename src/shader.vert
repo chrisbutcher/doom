@@ -44,9 +44,14 @@ void main() {
     v_position = model_space.xyz;
 
     // NEW!
-    v_position = tangent_matrix * model_space.xyz;
-    v_light_position = tangent_matrix * light_position;
-    v_view_position = tangent_matrix * u_view_position;
+    // v_position = tangent_matrix * model_space.xyz;
+    // v_light_position = tangent_matrix * light_position;
+    // v_view_position = tangent_matrix * u_view_position;
+
+    // DISABLED for debugging
+    v_position = model_space.xyz;
+    v_light_position = light_position;
+    v_view_position = u_view_position;
 
     gl_Position = u_view_proj * model_space;
 }

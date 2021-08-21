@@ -232,6 +232,9 @@ impl Model {
             vertices[c[2] as usize].bitangent = bitangent.into();
         }
 
+        // println!("12::::::::::::");
+        // println!("working vertices: {:?}", vertices);
+
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(&format!("Vertex Buffer (TODO name)")),
             contents: bytemuck::cast_slice(&vertices),
@@ -419,7 +422,7 @@ pub struct FloorAndCeilingHeight {
 pub struct FloorBuilder {
     sector_id_to_geo_lines: HashMap<usize, Vec<GeoLine>>,
     sector_id_to_floor_and_ceiling_height: HashMap<usize, FloorAndCeilingHeight>,
-    sector_id_to_floor_vertices: HashMap<usize, Vec<ModelVertex>>,
+    sector_id_to_floor_vertices_with_indices: HashMap<usize, (Vec<ModelVertex>, Vec<usize>)>,
 }
 
 impl FloorBuilder {
@@ -427,7 +430,7 @@ impl FloorBuilder {
         FloorBuilder {
             sector_id_to_geo_lines: HashMap::new(),
             sector_id_to_floor_and_ceiling_height: HashMap::new(),
-            sector_id_to_floor_vertices: HashMap::new(),
+            sector_id_to_floor_vertices_with_indices: HashMap::new(),
         }
     }
 
@@ -466,23 +469,23 @@ impl FloorBuilder {
 
         let mut vertex_pairs: Vec<[ModelVertex; 2]> = Vec::new();
 
-        for (_, vertices) in &self.sector_id_to_floor_vertices {
-            let vertices_length = vertices.len();
+        for (_, vertices_with_indices) in &self.sector_id_to_floor_vertices_with_indices {
+            let verts = vertices_with_indices.0.clone();
+            let inds = vertices_with_indices.1.clone();
 
-            for i in 0..vertices_length {
-                let from_vertex = vertices[i];
-                let to_vertex;
+            for ind_chunk in inds.chunks(3) {
+                let v0 = verts[ind_chunk[0]];
+                let v1 = verts[ind_chunk[1]];
+                let v2 = verts[ind_chunk[2]];
 
-                // Loop last vertex back to first
-                if i == vertices_length - 1 {
-                    to_vertex = vertices[0];
-                } else {
-                    to_vertex = vertices[i + 1];
-                };
-
-                vertex_pairs.push([from_vertex, to_vertex]);
+                vertex_pairs.push([v0, v1]);
+                vertex_pairs.push([v1, v2]);
+                vertex_pairs.push([v2, v0]);
             }
         }
+
+        // println!("8::::::::::::");
+        // println!("vertex_pairs: {:?}", vertex_pairs);
 
         for pair in &vertex_pairs {
             let v1 = pair[0];
@@ -568,6 +571,10 @@ impl FloorBuilder {
         sorted_sector_id_to_geo_lines.sort_by_key(|a| a.0);
 
         for (sector_id, unordered_geo_lines) in sorted_sector_id_to_geo_lines {
+            if *sector_id != 36 {
+                continue;
+            }
+
             let mut ordered_geo_lines = Vec::new();
             let mut unordered_geo_lines_copy = Vec::with_capacity(unordered_geo_lines.len());
             unordered_geo_lines_copy.clone_from(unordered_geo_lines);
@@ -615,6 +622,9 @@ impl FloorBuilder {
                 }
             }
 
+            println!("1:::::::::::::");
+            println!("{:?}", ordered_geo_lines);
+
             let mut polygon_linestring_tuples: Vec<(f32, f32)> = ordered_geo_lines
                 .iter()
                 .flat_map(|line| vec![(line.from.x, line.from.y), (line.to.x, line.to.y)])
@@ -634,10 +644,13 @@ impl FloorBuilder {
             // let polygon = polygon.convex_hull(); // Both of these seem to draw incorrect polygon bounds...
             // let polygon = polygon.concave_hull(0.1); // ignoring actual concavity of C-shaped sectors, for example.
 
-            if *sector_id == 58 {
-                println!("Sector {} polygon:", *sector_id);
-                println!("{:?}", polygon);
-            }
+            println!("2:::::::::::::");
+            println!("{:?}", polygon);
+
+            // if *sector_id == 58 {
+            //     println!("Sector {} polygon:", *sector_id);
+            //     println!("{:?}", polygon);
+            // }
 
             let sector_polygon = SectorPolygon {
                 sector_id: *sector_id,
@@ -662,13 +675,6 @@ impl FloorBuilder {
                 }
 
                 if x.polygon.contains(&y.polygon) {
-                    if x.sector_id == 42 && y.sector_id == 44 {
-                        println!("Sector {} polygon ...", x.sector_id);
-                        println!("{:?}", x.polygon);
-                        println!("Apparently contains sector {} polygon:", y.sector_id);
-                        println!("{:?}", y.polygon);
-                    }
-
                     entry.push(j_index);
 
                     // println!("Sector {} contains Sector {}", x.sector_id, y.sector_id);
@@ -684,6 +690,9 @@ impl FloorBuilder {
             parent_polygons_indices_to_child_polygon_indices.iter().collect();
 
         sorted_parent_polygons_indices_to_child_polygon_indices.sort_by_key(|a| a.0);
+
+        println!("3:::::::::::::");
+        println!("{:?}", sorted_parent_polygons_indices_to_child_polygon_indices);
 
         // Simply associating all child polygon array indices with parent array indices.
         // Walking through all child polygons, and pushing all of them as interiors on parent polygons.
@@ -779,20 +788,29 @@ impl FloorBuilder {
 
             println!("Attempting to triangulate parent sector {}", parent_polygon.sector_id);
             let (parent_vertices, parent_holes, parent_dimensions) = earcutr::flatten(&polygon_with_holes_data);
-            let parent_triangles_indexed = earcutr::earcut(&parent_vertices, &parent_holes, parent_dimensions);
+            let parent_triangles_indices = earcutr::earcut(&parent_vertices, &parent_holes, parent_dimensions);
+
+            println!("4:::::::::::::");
+            println!("{:?}", parent_vertices);
+
+            println!("5:::::::::::::");
+            println!("{:?}", parent_triangles_indices);
+
+            println!("5.5 not so bad:::::::::::::");
+            println!("{:?}", parent_polygon_data);
 
             sector_id_to_triangulated_polygons.insert(
                 parent_polygon.sector_id,
-                (parent_polygon_data, parent_triangles_indexed),
+                (parent_polygon_data, parent_triangles_indices),
             );
         }
 
-        let mut result: HashMap<usize, Vec<ModelVertex>> = HashMap::new();
+        let mut result: HashMap<usize, (Vec<ModelVertex>, Vec<usize>)> = HashMap::new();
 
         for (sector_id, triangulated_polygon) in sector_id_to_triangulated_polygons {
             println!("Building ModelVertexes for sector ID: {}", sector_id);
 
-            let (parent_vertices, parent_triangles_indexed) = triangulated_polygon;
+            let (parent_vertices, parent_triangles_indices) = triangulated_polygon;
 
             let floor_height;
             let sector_floor_and_ceiling_height = self.sector_id_to_floor_and_ceiling_height.get(&sector_id);
@@ -804,64 +822,49 @@ impl FloorBuilder {
                 println!("Could not fetch floor height for sector {}", sector_id);
             }
 
-            for c in parent_triangles_indexed.chunks(3) {
-                let point_1_index = c[0];
-                let point_2_index = c[1];
-                let point_3_index = c[2];
+            let mut verts = vec![];
 
-                let point_1_data = &parent_vertices[point_1_index];
-                let point_2_data = &parent_vertices[point_2_index];
-                let point_3_data = &parent_vertices[point_3_index];
-
-                let entry = result.entry(sector_id).or_insert(Vec::new());
-
-                let floor_vertex_1 = ModelVertex {
-                    position: [point_1_data[0], floor_height, -point_1_data[1] as f32].into(), // NOTE: wgpu uses a flipped z axis coordinate system.
+            for parent_vert in parent_vertices {
+                let model_vertex = ModelVertex {
+                    position: [parent_vert[0], floor_height, -parent_vert[1] as f32].into(), // NOTE: wgpu uses a flipped z axis coordinate system.
                     tex_coords: [0.0, 1.0].into(),
                     normal: [0.0, 0.1, 0.0].into(),
                     // We'll calculate these later
                     tangent: [0.0; 3].into(),
                     bitangent: [0.0; 3].into(),
                 };
-                entry.push(floor_vertex_1);
-                let floor_vertex_2 = ModelVertex {
-                    position: [point_2_data[0], floor_height, -point_2_data[1] as f32].into(), // NOTE: wgpu uses a flipped z axis coordinate system.
-                    tex_coords: [0.0, 1.0].into(),
-                    normal: [0.0, 0.1, 0.0].into(),
-                    // We'll calculate these later
-                    tangent: [0.0; 3].into(),
-                    bitangent: [0.0; 3].into(),
-                };
-                entry.push(floor_vertex_2);
-                let floor_vertex_3 = ModelVertex {
-                    position: [point_3_data[0], floor_height, -point_3_data[1] as f32].into(), // NOTE: wgpu uses a flipped z axis coordinate system.
-                    tex_coords: [0.0, 1.0].into(),
-                    normal: [0.0, 0.1, 0.0].into(),
-                    // We'll calculate these later
-                    tangent: [0.0; 3].into(),
-                    bitangent: [0.0; 3].into(),
-                };
-                entry.push(floor_vertex_3);
+                verts.push(model_vertex);
             }
+
+            let inds = parent_triangles_indices;
+
+            println!("20.verts:::::::::::::");
+            println!("verts: {:?}", verts);
+            println!("20.inds:::::::::::::");
+            println!("inds: {:?}", inds);
+
+            let _entry = result.entry(sector_id).or_insert((verts, inds));
         }
 
-        self.sector_id_to_floor_vertices = result;
+        println!("7:::::::::::::");
+        println!("ModelVertexes: {:?}", result);
+
+        self.sector_id_to_floor_vertices_with_indices = result;
     }
 
     pub fn build_floor_meshes(&mut self, device: &wgpu::Device, meshes: &mut Vec<Mesh>) {
-        for (sector_id, floor_vertices) in &self.sector_id_to_floor_vertices {
+        for (sector_id, floor_vertices_with_indices) in &self.sector_id_to_floor_vertices_with_indices {
             println!("Building mesh for sector: {}", sector_id);
 
-            let mut floor_vertices = floor_vertices.clone();
-
-            let indices: Vec<usize> = (0..floor_vertices.len()).collect();
+            let mut verts = floor_vertices_with_indices.0.clone();
+            let inds = floor_vertices_with_indices.1.clone();
 
             // Do a bunch of normals calculation magic:
             // https://sotrh.github.io/learn-wgpu/intermediate/tutorial11-normals/#the-tangent-and-the-bitangent
-            for c in indices.chunks(3) {
-                let v0 = floor_vertices[c[0] as usize];
-                let v1 = floor_vertices[c[1] as usize];
-                let v2 = floor_vertices[c[2] as usize];
+            for c in inds.chunks(3) {
+                let v0 = verts[c[0] as usize];
+                let v1 = verts[c[1] as usize];
+                let v2 = verts[c[2] as usize];
 
                 let pos0: cgmath::Vector3<_> = v0.position.into();
                 let pos1: cgmath::Vector3<_> = v1.position.into();
@@ -891,32 +894,50 @@ impl FloorBuilder {
                 let bitangent = (delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * r;
 
                 // We'll use the same tangent/bitangent for each vertex in the triangle
-                floor_vertices[c[0] as usize].tangent = tangent.into();
-                floor_vertices[c[1] as usize].tangent = tangent.into();
-                floor_vertices[c[2] as usize].tangent = tangent.into();
+                // floor_vertices[c[0] as usize].tangent = tangent.into();
+                // floor_vertices[c[1] as usize].tangent = tangent.into();
+                // floor_vertices[c[2] as usize].tangent = tangent.into();
 
-                floor_vertices[c[0] as usize].bitangent = bitangent.into();
-                floor_vertices[c[1] as usize].bitangent = bitangent.into();
-                floor_vertices[c[2] as usize].bitangent = bitangent.into();
+                // floor_vertices[c[0] as usize].bitangent = bitangent.into();
+                // floor_vertices[c[1] as usize].bitangent = bitangent.into();
+                // floor_vertices[c[2] as usize].bitangent = bitangent.into();
+
+                verts[c[0] as usize].tangent = [0.0; 3];
+                verts[c[1] as usize].tangent = [0.0; 3];
+                verts[c[2] as usize].tangent = [0.0; 3];
+
+                verts[c[0] as usize].bitangent = [0.0; 3];
+                verts[c[1] as usize].bitangent = [0.0; 3];
+                verts[c[2] as usize].bitangent = [0.0; 3];
             }
+
+            println!("9:::::::::::::");
+            println!("verts: {:?}", verts);
+            println!("verts.len(): {:?}", verts.len());
 
             let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&format!("Vertex Buffer (TODO name)")),
-                contents: bytemuck::cast_slice(&floor_vertices),
+                contents: bytemuck::cast_slice(&verts),
                 usage: wgpu::BufferUsage::VERTEX,
             });
 
+            println!("10:::::::::::::");
+            println!("inds: {:?}", inds);
+
             let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&format!("Index Buffer (TODO name)")),
-                contents: bytemuck::cast_slice(&indices),
+                contents: bytemuck::cast_slice(&inds),
                 usage: wgpu::BufferUsage::INDEX,
             });
+
+            println!("11:::::::::::::");
+            println!("inds.len(): {:?}", inds.len());
 
             meshes.push(Mesh {
                 name: String::from("Some floor"),
                 vertex_buffer,
                 index_buffer,
-                num_elements: indices.len() as u32,
+                num_elements: inds.len() as u32,
                 material: 0, // TODO
             });
         }
