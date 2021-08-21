@@ -232,7 +232,7 @@ impl Model {
             vertices[c[2] as usize].bitangent = bitangent.into();
         }
 
-        // println!("12::::::::::::");
+        // println!("12.1::::::::::::");
         // println!("working vertices: {:?}", vertices);
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -240,6 +240,9 @@ impl Model {
             contents: bytemuck::cast_slice(&vertices),
             usage: wgpu::BufferUsage::VERTEX,
         });
+
+        // println!("12.2::::::::::::");
+        // println!("working indices: {:?}", indices);
 
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(&format!("Index Buffer (TODO name)")),
@@ -932,6 +935,12 @@ impl FloorBuilder {
 
             println!("11:::::::::::::");
             println!("inds.len(): {:?}", inds.len());
+
+            println!("30.1:::::::::::::");
+            println!("vertex_buffer: {:?}", vertex_buffer);
+
+            println!("30.2:::::::::::::");
+            println!("index_buffer: {:?}", index_buffer);
 
             meshes.push(Mesh {
                 name: String::from("Some floor"),
