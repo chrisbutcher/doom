@@ -6,20 +6,21 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0"
-bytemuck = { version = "1.5", features = [ "derive" ] }
-cgmath = "0.17"
-env_logger = "0.7"
+bytemuck = { version = "1.4", features = [ "derive" ] }
+cgmath = "0.18"
+env_logger = "0.9"
 futures = "0.3"
 image = "0.23"
 log = "0.4"
-tobj = "2.0"
+tobj = "3.0"
 wgpu = "0.6"
-winit = "0.23"
-png = "0.16.8"
-svg = "0.9.0"
+winit = "0.25"
+
+# Doom specific
 regex = "1.4.3"
 lyon = "0.17.5"
-
+png = "0.16.8"
+svg = "0.9.0"
 geo = "0.17.1"
 poly2tri = "0.1.0"
 earcutr = "0.2.0"
