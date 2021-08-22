@@ -24,7 +24,7 @@ extern crate earcutr;
 use crate::texture;
 
 pub trait Vertex {
-    fn desc<'a>() -> wgpu::VertexBufferDescriptor<'a>;
+    fn desc<'a>() -> wgpu::VertexBufferLayout<'a>;
 }
 
 #[repr(C)]
@@ -61,37 +61,37 @@ pub struct Model {
 }
 
 impl Vertex for ModelVertex {
-    fn desc<'a>() -> wgpu::VertexBufferDescriptor<'a> {
+    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
         use std::mem;
-        wgpu::VertexBufferDescriptor {
-            stride: mem::size_of::<ModelVertex>() as wgpu::BufferAddress,
+        wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<ModelVertex>() as wgpu::BufferAddress,
             step_mode: wgpu::InputStepMode::Vertex,
             attributes: &[
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     offset: 0,
                     shader_location: 0,
-                    format: wgpu::VertexFormat::Float3,
+                    format: wgpu::VertexFormat::Float32x3,
                 },
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
-                    format: wgpu::VertexFormat::Float2,
+                    format: wgpu::VertexFormat::Float32x2,
                 },
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     offset: mem::size_of::<[f32; 5]>() as wgpu::BufferAddress,
                     shader_location: 2,
-                    format: wgpu::VertexFormat::Float3,
+                    format: wgpu::VertexFormat::Float32x3,
                 },
                 // Tangent and bitangent
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
                     shader_location: 3,
-                    format: wgpu::VertexFormat::Float3,
+                    format: wgpu::VertexFormat::Float32x3,
                 },
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     offset: mem::size_of::<[f32; 11]>() as wgpu::BufferAddress,
                     shader_location: 4,
-                    format: wgpu::VertexFormat::Float3,
+                    format: wgpu::VertexFormat::Float32x3,
                 },
             ],
         }
@@ -1184,7 +1184,7 @@ where
         light: &'b wgpu::BindGroup,
     ) {
         self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-        self.set_index_buffer(mesh.index_buffer.slice(..));
+        self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         self.set_bind_group(0, &material.bind_group, &[]);
         self.set_bind_group(1, &uniforms, &[]);
         self.set_bind_group(2, &light, &[]);
@@ -1262,7 +1262,7 @@ where
         light: &'b wgpu::BindGroup,
     ) {
         self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-        self.set_index_buffer(mesh.index_buffer.slice(..));
+        self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         self.set_bind_group(0, uniforms, &[]);
         self.set_bind_group(1, light, &[]);
         self.draw_indexed(0..mesh.num_elements, 0, instances);

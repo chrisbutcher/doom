@@ -17,10 +17,7 @@ uniform Uniforms {
     mat4 u_view_proj;
 };
 
-layout(location=5) in vec4 model_matrix_0;
-layout(location=6) in vec4 model_matrix_1;
-layout(location=7) in vec4 model_matrix_2;
-layout(location=8) in vec4 model_matrix_3;
+layout(location=5) in mat4 model_matrix;
 
 // NEW!
 layout(set=2, binding=0) uniform Light {
@@ -29,12 +26,6 @@ layout(set=2, binding=0) uniform Light {
 };
 
 void main() {
-    mat4 model_matrix = mat4(
-        model_matrix_0,
-        model_matrix_1,
-        model_matrix_2,
-        model_matrix_3
-    );
     v_tex_coords = a_tex_coords;
 
     mat3 normal_matrix = mat3(transpose(inverse(model_matrix)));
@@ -53,9 +44,14 @@ void main() {
     v_position = model_space.xyz;
 
     // NEW!
-    v_position = tangent_matrix * model_space.xyz;
-    v_light_position = tangent_matrix * light_position;
-    v_view_position = tangent_matrix * u_view_position;
+    // v_position = tangent_matrix * model_space.xyz;
+    // v_light_position = tangent_matrix * light_position;
+    // v_view_position = tangent_matrix * u_view_position;
+
+    // DISABLED for debugging
+    v_position = model_space.xyz;
+    v_light_position = light_position;
+    v_view_position = u_view_position;
 
     gl_Position = u_view_proj * model_space;
 }

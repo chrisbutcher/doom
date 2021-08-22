@@ -21,7 +21,7 @@ void main() {
     vec4 object_color = texture(sampler2D(t_diffuse, s_diffuse), v_tex_coords);
     vec4 object_normal = texture(sampler2D(t_normal, s_normal), v_tex_coords);
 
-    float ambient_strength = 0.1;
+    float ambient_strength = 0.2;
     vec3 ambient_color = light_color * ambient_strength;
 
     vec3 normal = normalize(object_normal.rgb * 2.0 - 1.0); // UPDATED!
