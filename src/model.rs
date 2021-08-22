@@ -8,9 +8,7 @@ use geo::{LineString, Polygon};
 
 use wgpu::util::DeviceExt;
 
-use svg::node::element::path::Data;
-use svg::node::element::Path;
-use svg::Document;
+use std::thread;
 
 extern crate earcutr;
 
@@ -335,10 +333,15 @@ impl Model {
         }
 
         floor_builder.build_floors();
-        // map_svg::draw_map_svg_with_floors(
-        //     floor_builder.sector_id_to_floor_vertices_with_indices.clone(),
-        //     &scene.map,
-        // );
+
+        // let handler = thread::spawn(|| {
+        map_svg::draw_map_svg_with_floors(
+            // TODO: Do this in a separate thread for speed?
+            floor_builder.sector_id_to_floor_vertices_with_indices.clone(),
+            &scene.map,
+        );
+        // });
+
         floor_builder.build_floor_meshes(device, &mut meshes);
 
         Ok(Self { meshes, materials })
@@ -360,38 +363,11 @@ impl GeoLine {
     }
 }
 
-// impl PartialEq for GeoLine {
-//     fn eq(&self, other: &Self) -> bool {
-//         self.from.x == other.from.x
-//             && self.from.y == other.from.y
-//             && self.to.x == other.to.x
-//             && self.to.y == other.to.y
-//             && self.linedef_index == other.linedef_index
-//     }
-// }
-
-// impl Eq for GeoLine {}
-
-// impl Hash for GeoLine {
-//     fn hash<H: Hasher>(&self, state: &mut H) {
-//         self.from.hash(state);
-//         self.to.hash(state);
-//         self.linedef_index.hash(state);
-//     }
-// }
-
 #[derive(Copy, Clone, Debug)]
 pub struct GeoVertex {
     pub x: f32,
     pub y: f32,
 }
-
-// impl Hash for GeoVertex {
-//     fn hash<H: Hasher>(&self, state: &mut H) {
-//         (self.x as i32).hash(state);
-//         (self.y as i32).hash(state);
-//     }
-// }
 
 #[derive(Debug)]
 pub struct SectorPolygon {
@@ -455,21 +431,22 @@ impl FloorBuilder {
             });
     }
 
-    // Handy article on this topic: https://medium.com/@jmickle_/build-a-model-of-a-doom-level-7283addf009f
-    // Rename to `build_floors_and_ceilings` ?
-    pub fn build_floors(&mut self) {
-        let mut all_sector_polygons = vec![];
-
+    fn sorted_sector_id_to_geo_lines(&self) -> Vec<(&usize, &std::vec::Vec<model::GeoLine>)> {
         let mut sorted_sector_id_to_geo_lines: Vec<(&usize, &Vec<GeoLine>)> =
             self.sector_id_to_geo_lines.iter().collect();
 
         sorted_sector_id_to_geo_lines.sort_by_key(|a| a.0);
 
-        for (sector_id, unordered_geo_lines) in sorted_sector_id_to_geo_lines {
-            // if *sector_id != 24 {
-            //     continue;
-            // }
+        return sorted_sector_id_to_geo_lines;
+    }
 
+    fn sectors_with_ordered_geolines(&self) -> Vec<model::SectorPolygon> {
+        let mut result = vec![];
+
+        // Sorting by sector ID simply for easier debugging.
+        let sorted_by_sector_id = self.sorted_sector_id_to_geo_lines();
+
+        for (sector_id, unordered_geo_lines) in sorted_by_sector_id {
             let mut ordered_geo_lines = Vec::new();
             let mut unordered_geo_lines_copy = Vec::with_capacity(unordered_geo_lines.len());
             unordered_geo_lines_copy.clone_from(unordered_geo_lines);
@@ -526,27 +503,31 @@ impl FloorBuilder {
 
             let line_string = LineString::from(polygon_linestring_tuples);
 
-            // Ordering matters, and we need to build sectors in order, and not rely on convex/concave hull
+            // Ordering matters, and we need to build sectors in order, and not rely on convex/concave hull.
+            // Specifically, `polygon.convex_hull()` & `polygon.concave_hull()` seem to draw incorrect polygon bounds,
+            // and ignore actual concavity of C-shaped sectors, for example.
             let polygon = Polygon::new(line_string, vec![]);
-            // let polygon = polygon.convex_hull(); // Both of these seem to draw incorrect polygon bounds...
-            // let polygon = polygon.concave_hull(0.1); // ignoring actual concavity of C-shaped sectors, for example.
 
             let sector_polygon = SectorPolygon {
                 sector_id: *sector_id,
                 polygon: polygon,
             };
 
-            all_sector_polygons.push(sector_polygon);
+            result.push(sector_polygon);
         }
+        return result;
+    }
 
+    fn parent_polygons_indices_to_child_polygon_indices(
+        &self,
+        all_sector_polygons: &Vec<model::SectorPolygon>,
+    ) -> HashMap<usize, std::vec::Vec<usize>> {
         // REMINDER: This indexes by element index in all_sector_polygons, NOT sector ID.
-        let mut parent_polygons_indices_to_child_polygon_indices: HashMap<usize, Vec<usize>> = HashMap::new();
+        let mut result: HashMap<usize, Vec<usize>> = HashMap::new();
 
         // Use geo crate to find containing sectors, to use with poly2tri crate which handles triangulation w/ holes.
         for (i_index, x) in all_sector_polygons.iter().enumerate() {
-            let entry = parent_polygons_indices_to_child_polygon_indices
-                .entry(i_index)
-                .or_insert(Vec::new());
+            let entry = result.entry(i_index).or_insert(Vec::new());
 
             for (j_index, y) in all_sector_polygons.iter().enumerate() {
                 if i_index == j_index {
@@ -563,34 +544,26 @@ impl FloorBuilder {
             }
         }
 
-        let mut sector_id_to_triangulated_polygons: HashMap<usize, (Vec<Vec<Vec<f32>>>, Vec<u32>)> = HashMap::new();
+        return result;
+    }
 
+    fn sector_id_to_triangulated_polygons(
+        &self,
+        all_sector_polygons: &Vec<model::SectorPolygon>,
+        parent_polygons_indices_to_child_polygon_indices: HashMap<usize, std::vec::Vec<usize>>,
+    ) -> HashMap<usize, (Vec<Vec<Vec<f32>>>, Vec<u32>)> {
         let mut sorted_parent_polygons_indices_to_child_polygon_indices: Vec<(&usize, &Vec<usize>)> =
             parent_polygons_indices_to_child_polygon_indices.iter().collect();
 
         sorted_parent_polygons_indices_to_child_polygon_indices.sort_by_key(|a| a.0);
+
+        let mut result: HashMap<usize, (Vec<Vec<Vec<f32>>>, Vec<u32>)> = HashMap::new();
 
         // Simply associating all child polygon array indices with parent array indices.
         // Walking through all child polygons, and pushing all of them as interiors on parent polygons.
         for (parent_polygon_index, children_polygon_indices) in sorted_parent_polygons_indices_to_child_polygon_indices
         {
             let parent_polygon = &all_sector_polygons[*parent_polygon_index];
-
-            // Skipping very concave sectors, sectors with complex inner/own holes.
-            // if parent_polygon.sector_id == 15
-            //     || parent_polygon.sector_id == 32
-            //     || parent_polygon.sector_id == 40
-            //     || parent_polygon.sector_id == 42
-            //     || parent_polygon.sector_id == 28
-            //     || parent_polygon.sector_id == 70
-            //     || parent_polygon.sector_id == 41
-            // {
-            //     println!(
-            //         "Skipping triangulating for parent sector ID: {}",
-            //         parent_polygon.sector_id
-            //     );
-            //     continue;
-            // }
 
             println!("Triangulating parent sector ID: {}", parent_polygon.sector_id);
 
@@ -622,8 +595,6 @@ impl FloorBuilder {
 
                 // For child, without holes
                 let mut child_polygon_without_holes_data: Vec<Vec<Vec<f32>>> = vec![];
-                // let mut child_polygon_data: Vec<Vec<f32>> = vec![];
-
                 let c_points = child_polygon.polygon.exterior().clone().into_points();
                 let c_points_len = c_points.len();
 
@@ -639,40 +610,37 @@ impl FloorBuilder {
 
                 let (child_vertices, child_holes, child_dimensions) =
                     earcutr::flatten(&child_polygon_without_holes_data);
-                let child_triangles_indexed_usize = earcutr::earcut(&child_vertices, &child_holes, child_dimensions);
+                let child_triangles_indices = earcutr::earcut(&child_vertices, &child_holes, child_dimensions)
+                    .iter()
+                    .map(|i| *i as u32)
+                    .collect();
 
-                let child_triangles_indexed = child_triangles_indexed_usize.iter().map(|i| *i as u32).collect();
-
-                sector_id_to_triangulated_polygons.insert(
+                result.insert(
                     child_polygon.sector_id,
-                    (vec![child_polygon_for_hole_and_own_triangles], child_triangles_indexed),
+                    (vec![child_polygon_for_hole_and_own_triangles], child_triangles_indices),
                 );
             }
 
-            //   _   _  ____ _______ ______
-            //  | \ | |/ __ \__   __|  ____|
-            //  |  \| | |  | | | |  | |__
-            //  | . ` | |  | | | |  |  __|
-            //  | |\  | |__| | | |  | |____
-            //  |_| \_|\____/  |_|  |______|
-
-            // Now using earcutr
-            // poly2tri (https://crates.io/crates/poly2tri) seems to be broken. It was last maintained 5 years ago, and
-            // has fewer downloads than https://crates.io/crates/earcutr which is more recently updated and has more
-            // downloads.
-
             println!("Attempting to triangulate parent sector {}", parent_polygon.sector_id);
             let (parent_vertices, parent_holes, parent_dimensions) = earcutr::flatten(&polygon_with_holes_data);
-            let parent_triangles_indices_usize = earcutr::earcut(&parent_vertices, &parent_holes, parent_dimensions);
+            let parent_triangles_indices = earcutr::earcut(&parent_vertices, &parent_holes, parent_dimensions)
+                .iter()
+                .map(|i| *i as u32)
+                .collect();
 
-            let parent_triangles_indices = parent_triangles_indices_usize.iter().map(|i| *i as u32).collect();
-
-            sector_id_to_triangulated_polygons.insert(
+            result.insert(
                 parent_polygon.sector_id,
                 (polygon_with_holes_data, parent_triangles_indices),
             );
         }
 
+        return result;
+    }
+
+    fn compute_sector_id_to_floor_vertices_with_indices(
+        &self,
+        sector_id_to_triangulated_polygons: HashMap<usize, (Vec<Vec<Vec<f32>>>, Vec<u32>)>,
+    ) -> HashMap<usize, (std::vec::Vec<model::ModelVertex>, std::vec::Vec<u32>)> {
         let mut result: HashMap<usize, (Vec<ModelVertex>, Vec<u32>)> = HashMap::new();
 
         for (sector_id, triangulated_polygon) in sector_id_to_triangulated_polygons {
@@ -711,22 +679,37 @@ impl FloorBuilder {
             let _entry = result.entry(sector_id).or_insert((verts, inds));
         }
 
-        self.sector_id_to_floor_vertices_with_indices = result;
+        return result;
+    }
+
+    // Handy article on this topic: https://medium.com/@jmickle_/build-a-model-of-a-doom-level-7283addf009f
+    // Rename to `build_floors_and_ceilings` ?
+    pub fn build_floors(&mut self) {
+        let all_sector_polygons = self.sectors_with_ordered_geolines();
+
+        let parent_polygons_indices_to_child_polygon_indices =
+            self.parent_polygons_indices_to_child_polygon_indices(&all_sector_polygons);
+
+        let sector_id_to_triangulated_polygons = self
+            .sector_id_to_triangulated_polygons(&all_sector_polygons, parent_polygons_indices_to_child_polygon_indices);
+
+        self.sector_id_to_floor_vertices_with_indices =
+            self.compute_sector_id_to_floor_vertices_with_indices(sector_id_to_triangulated_polygons);
     }
 
     pub fn build_floor_meshes(&mut self, device: &wgpu::Device, meshes: &mut Vec<Mesh>) {
         for (sector_id, floor_vertices_with_indices) in &self.sector_id_to_floor_vertices_with_indices {
             println!("Building mesh for sector: {}", sector_id);
 
-            let mut verts = floor_vertices_with_indices.0.clone();
-            let inds = floor_vertices_with_indices.1.clone();
+            let mut vertices = floor_vertices_with_indices.0.clone();
+            let indices = floor_vertices_with_indices.1.clone();
 
             // Do a bunch of normals calculation magic:
             // https://sotrh.github.io/learn-wgpu/intermediate/tutorial11-normals/#the-tangent-and-the-bitangent
-            for c in inds.chunks(3) {
-                let v0 = verts[c[0] as usize];
-                let v1 = verts[c[1] as usize];
-                let v2 = verts[c[2] as usize];
+            for c in indices.chunks(3) {
+                let v0 = vertices[c[0] as usize];
+                let v1 = vertices[c[1] as usize];
+                let v2 = vertices[c[2] as usize];
 
                 let pos0: cgmath::Vector3<_> = v0.position.into();
                 let pos1: cgmath::Vector3<_> = v1.position.into();
@@ -756,28 +739,27 @@ impl FloorBuilder {
                 let bitangent = (delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * r;
 
                 // We'll use the same tangent/bitangent for each vertex in the triangle
-                verts[c[0] as usize].tangent = tangent.into();
-                verts[c[1] as usize].tangent = tangent.into();
-                verts[c[2] as usize].tangent = tangent.into();
+                vertices[c[0] as usize].tangent = tangent.into();
+                vertices[c[1] as usize].tangent = tangent.into();
+                vertices[c[2] as usize].tangent = tangent.into();
 
-                verts[c[0] as usize].bitangent = bitangent.into();
-                verts[c[1] as usize].bitangent = bitangent.into();
-                verts[c[2] as usize].bitangent = bitangent.into();
+                vertices[c[0] as usize].bitangent = bitangent.into();
+                vertices[c[1] as usize].bitangent = bitangent.into();
+                vertices[c[2] as usize].bitangent = bitangent.into();
             }
-
-            let verts_mucked_in_method: &[u8] = bytemuck::cast_slice(&verts);
 
             let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&format!("Vertex Buffer 123")),
-                contents: verts_mucked_in_method,
+                contents: bytemuck::cast_slice(&vertices),
                 usage: wgpu::BufferUsage::VERTEX,
             });
 
-            let inds_mucked_in_method: &[u8] = bytemuck::cast_slice(&inds);
+            // NOTE! If indices are passed in as anything other than u32s, polygons will render, but will be broken.
+            let indices_u8_slice: &[u8] = bytemuck::cast_slice(&indices);
 
             let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&format!("Index Buffer 123")),
-                contents: inds_mucked_in_method,
+                contents: indices_u8_slice,
                 usage: wgpu::BufferUsage::INDEX,
             });
 
@@ -785,7 +767,7 @@ impl FloorBuilder {
                 name: String::from("Foo"),
                 vertex_buffer,
                 index_buffer,
-                num_elements: inds.len() as u32,
+                num_elements: indices.len() as u32,
                 material: 0, // TODO
             });
         }

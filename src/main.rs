@@ -12,8 +12,6 @@ use winit::{
     window::Window,
 };
 
-use poly2tri::*;
-
 // -- Doom specific
 pub mod colors;
 pub mod lumps;
@@ -22,7 +20,6 @@ pub mod maps;
 pub mod png_dump;
 pub mod wad_graphics;
 //
-
 mod camera;
 mod model;
 mod obj_loader;
