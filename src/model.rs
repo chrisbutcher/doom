@@ -225,17 +225,11 @@ impl Model {
             vertices[c[2] as usize].bitangent = bitangent.into();
         }
 
-        // println!("12.1::::::::::::");
-        // println!("working vertices: {:?}", vertices);
-
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(&format!("Vertex Buffer (TODO name)")),
             contents: bytemuck::cast_slice(&vertices),
             usage: wgpu::BufferUsage::VERTEX,
         });
-
-        // println!("12.2::::::::::::");
-        // println!("working indices: {:?}", indices);
 
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(&format!("Index Buffer (TODO name)")),
@@ -283,18 +277,12 @@ impl Model {
                     front_sector.ceiling_height as f32,
                 );
 
-                // Test only with sectors 1 and 2.
-                // if front_sidedef.sector_facing == 0
-                //     || front_sidedef.sector_facing == 1
-                //     || front_sidedef.sector_facing == 31
-                // {
                 floor_builder.track_sector_boundaries(
                     front_sector.sector_index,
                     start_vertex,
                     end_vertex,
                     line.linedef_index,
                 );
-                // }
 
                 (Some(front_sidedef), Some(front_sector))
             } else {
@@ -348,121 +336,7 @@ impl Model {
 
         floor_builder.build_floors();
         floor_builder.debug_draw_floor_svg(&scene.map);
-
-        println!("meshes.len() before: {}", meshes.len());
-
-        let floor_meshes = floor_builder.build_floor_meshes(device);
-
-        for floor_verts_and_indices in floor_meshes {
-            let verts = floor_verts_and_indices.0;
-            let indices = floor_verts_and_indices.1;
-
-            println!("verts sent up: {:?}", verts);
-            println!("indices sent up: {:?}", indices);
-
-            let mucked_from_method: &[u8] = bytemuck::cast_slice(&verts);
-
-            println!("mucked_from_method: {:?}", mucked_from_method);
-
-            let test_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("Vertex Buffer 123")),
-                contents: mucked_from_method,
-                usage: wgpu::BufferUsage::VERTEX,
-            });
-            let test_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("Index Buffer 123")),
-                contents: bytemuck::cast_slice(&indices),
-                usage: wgpu::BufferUsage::INDEX,
-            });
-
-            meshes.push(Mesh {
-                name: String::from("Foo"),
-                vertex_buffer: test_vertex_buffer,
-                index_buffer: test_index_buffer,
-                num_elements: indices.len() as u32,
-                material: 0,
-            });
-        }
-
-        println!("meshes.len() after: {}", meshes.len());
-
-        let test_vertices = vec![
-            ModelVertex {
-                position: [1216.0, 0.0, 2880.0],
-                tex_coords: [0.0, 1.0],
-                normal: [0.0, 0.1, 0.0],
-                tangent: [0.0, 0.0, 0.0],
-                bitangent: [0.0, 0.0, 0.0],
-            },
-            ModelVertex {
-                position: [1248.0, 0.0, 2528.0],
-                tex_coords: [0.0, 1.0],
-                normal: [0.0, 0.1, 0.0],
-                tangent: [0.0, 0.0, 0.0],
-                bitangent: [0.0, 0.0, 0.0],
-            },
-            ModelVertex {
-                position: [1472.0, 0.0, 2432.0],
-                tex_coords: [0.0, 1.0],
-                normal: [0.0, 0.1, 0.0],
-                tangent: [0.0, 0.0, 0.0],
-                bitangent: [0.0, 0.0, 0.0],
-            },
-            ModelVertex {
-                position: [1472.0, 0.0, 2560.0],
-                tex_coords: [0.0, 1.0],
-                normal: [0.0, 0.1, 0.0],
-                tangent: [0.0, 0.0, 0.0],
-                bitangent: [0.0, 0.0, 0.0],
-            },
-            ModelVertex {
-                position: [1384.0, 0.0, 2592.0],
-                tex_coords: [0.0, 1.0],
-                normal: [0.0, 0.1, 0.0],
-                tangent: [0.0, 0.0, 0.0],
-                bitangent: [0.0, 0.0, 0.0],
-            },
-            ModelVertex {
-                position: [1344.0, 0.0, 2880.0],
-                tex_coords: [0.0, 1.0],
-                normal: [0.0, 0.1, 0.0],
-                tangent: [0.0, 0.0, 0.0],
-                bitangent: [0.0, 0.0, 0.0],
-            },
-        ];
-        let test_indices = vec![1, 0, 5, 4, 3, 2, 1, 5, 4, 4, 2, 1];
-
-        println!("test_vertices at this level: {:?}", test_vertices);
-
-        println!("test_indices at this level: {:?}", test_indices);
-
-        let mucked_at_level: &[u8] = bytemuck::cast_slice(&test_vertices);
-        println!("mucked_at_level: {:?}", mucked_at_level);
-
-        let test_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(&format!("Vertex Buffer 123")),
-            contents: mucked_at_level,
-            usage: wgpu::BufferUsage::VERTEX,
-        });
-        let test_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(&format!("Index Buffer 123")),
-            contents: bytemuck::cast_slice(&test_indices),
-            usage: wgpu::BufferUsage::INDEX,
-        });
-
-        // meshes.push(Mesh {
-        //     name: String::from("Foo"),
-        //     vertex_buffer: test_vertex_buffer,
-        //     index_buffer: test_index_buffer,
-        //     num_elements: test_indices.len() as u32,
-        //     material: 0,
-        // });
-
-        println!("100.1 getting last two pushed meshes for comparison:");
-        let last_two = meshes.iter().rev().take(2);
-        for mesh in last_two {
-            println!("mesh: {:?}", mesh);
-        }
+        floor_builder.build_floor_meshes(device, &mut meshes);
 
         Ok(Self { meshes, materials })
     }
@@ -531,7 +405,7 @@ pub struct FloorAndCeilingHeight {
 pub struct FloorBuilder {
     sector_id_to_geo_lines: HashMap<usize, Vec<GeoLine>>,
     sector_id_to_floor_and_ceiling_height: HashMap<usize, FloorAndCeilingHeight>,
-    sector_id_to_floor_vertices_with_indices: HashMap<usize, (Vec<ModelVertex>, Vec<usize>)>,
+    sector_id_to_floor_vertices_with_indices: HashMap<usize, (Vec<ModelVertex>, Vec<u32>)>,
 }
 
 impl FloorBuilder {
@@ -578,23 +452,25 @@ impl FloorBuilder {
 
         let mut vertex_pairs: Vec<[ModelVertex; 2]> = Vec::new();
 
-        for (_, vertices_with_indices) in &self.sector_id_to_floor_vertices_with_indices {
+        for (sector_id, vertices_with_indices) in &self.sector_id_to_floor_vertices_with_indices {
             let verts = vertices_with_indices.0.clone();
             let inds = vertices_with_indices.1.clone();
 
+            println!("Drawing debug SVG vertices for sector: {}", sector_id);
+            println!("verts.len(): {}, inds.len(): {}", verts.len(), inds.len());
+
+            println!("{:?}", vertices_with_indices);
+
             for ind_chunk in inds.chunks(3) {
-                let v0 = verts[ind_chunk[0]];
-                let v1 = verts[ind_chunk[1]];
-                let v2 = verts[ind_chunk[2]];
+                let v0 = verts[ind_chunk[0] as usize];
+                let v1 = verts[ind_chunk[1] as usize];
+                let v2 = verts[ind_chunk[2] as usize];
 
                 vertex_pairs.push([v0, v1]);
                 vertex_pairs.push([v1, v2]);
                 vertex_pairs.push([v2, v0]);
             }
         }
-
-        // println!("8::::::::::::");
-        // println!("vertex_pairs: {:?}", vertex_pairs);
 
         for pair in &vertex_pairs {
             let v1 = pair[0];
@@ -661,6 +537,10 @@ impl FloorBuilder {
     }
 
     pub fn track_sector_floor_height(&mut self, sector_index: usize, floor_height: f32, ceiling_height: f32) {
+        if sector_index == 71 {
+            panic!("Tracked floor height for sector: {}", sector_index);
+        }
+
         self.sector_id_to_floor_and_ceiling_height
             .entry(sector_index)
             .or_insert(FloorAndCeilingHeight {
@@ -680,9 +560,9 @@ impl FloorBuilder {
         sorted_sector_id_to_geo_lines.sort_by_key(|a| a.0);
 
         for (sector_id, unordered_geo_lines) in sorted_sector_id_to_geo_lines {
-            if *sector_id != 24 {
-                continue;
-            }
+            // if *sector_id != 24 {
+            //     continue;
+            // }
 
             let mut ordered_geo_lines = Vec::new();
             let mut unordered_geo_lines_copy = Vec::with_capacity(unordered_geo_lines.len());
@@ -731,9 +611,6 @@ impl FloorBuilder {
                 }
             }
 
-            println!("1:::::::::::::");
-            println!("{:?}", ordered_geo_lines);
-
             let mut polygon_linestring_tuples: Vec<(f32, f32)> = ordered_geo_lines
                 .iter()
                 .flat_map(|line| vec![(line.from.x, line.from.y), (line.to.x, line.to.y)])
@@ -743,23 +620,10 @@ impl FloorBuilder {
 
             let line_string = LineString::from(polygon_linestring_tuples);
 
-            if *sector_id == 58 {
-                println!("Sector {} line string:", *sector_id);
-                println!("{:?}", line_string);
-            }
-
             // Ordering matters, and we need to build sectors in order, and not rely on convex/concave hull
             let polygon = Polygon::new(line_string, vec![]);
             // let polygon = polygon.convex_hull(); // Both of these seem to draw incorrect polygon bounds...
             // let polygon = polygon.concave_hull(0.1); // ignoring actual concavity of C-shaped sectors, for example.
-
-            println!("2:::::::::::::");
-            println!("{:?}", polygon);
-
-            // if *sector_id == 58 {
-            //     println!("Sector {} polygon:", *sector_id);
-            //     println!("{:?}", polygon);
-            // }
 
             let sector_polygon = SectorPolygon {
                 sector_id: *sector_id,
@@ -786,22 +650,19 @@ impl FloorBuilder {
                 if x.polygon.contains(&y.polygon) {
                     entry.push(j_index);
 
-                    // println!("Sector {} contains Sector {}", x.sector_id, y.sector_id);
+                    println!("Sector {} contains Sector {}", x.sector_id, y.sector_id);
                 } else {
-                    // println!("Sector {} does NOT contain Sector {}", x.sector_id, y.sector_id);
+                    println!("Sector {} does NOT contain Sector {}", x.sector_id, y.sector_id);
                 }
             }
         }
 
-        let mut sector_id_to_triangulated_polygons: HashMap<usize, (Vec<Vec<f32>>, Vec<usize>)> = HashMap::new();
+        let mut sector_id_to_triangulated_polygons: HashMap<usize, (Vec<Vec<Vec<f32>>>, Vec<u32>)> = HashMap::new();
 
         let mut sorted_parent_polygons_indices_to_child_polygon_indices: Vec<(&usize, &Vec<usize>)> =
             parent_polygons_indices_to_child_polygon_indices.iter().collect();
 
         sorted_parent_polygons_indices_to_child_polygon_indices.sort_by_key(|a| a.0);
-
-        println!("3:::::::::::::");
-        println!("{:?}", sorted_parent_polygons_indices_to_child_polygon_indices);
 
         // Simply associating all child polygon array indices with parent array indices.
         // Walking through all child polygons, and pushing all of them as interiors on parent polygons.
@@ -810,18 +671,20 @@ impl FloorBuilder {
             let parent_polygon = &all_sector_polygons[*parent_polygon_index];
 
             // Skipping very concave sectors, sectors with complex inner/own holes.
-            if parent_polygon.sector_id == 15
-                || parent_polygon.sector_id == 32
-                || parent_polygon.sector_id == 40
-                || parent_polygon.sector_id == 42
-                || parent_polygon.sector_id == 28
-            {
-                println!(
-                    "Skipping triangulating for parent sector ID: {}",
-                    parent_polygon.sector_id
-                );
-                continue;
-            }
+            // if parent_polygon.sector_id == 15
+            //     || parent_polygon.sector_id == 32
+            //     || parent_polygon.sector_id == 40
+            //     || parent_polygon.sector_id == 42
+            //     || parent_polygon.sector_id == 28
+            //     || parent_polygon.sector_id == 70
+            //     || parent_polygon.sector_id == 41
+            // {
+            //     println!(
+            //         "Skipping triangulating for parent sector ID: {}",
+            //         parent_polygon.sector_id
+            //     );
+            //     continue;
+            // }
 
             println!("Triangulating parent sector ID: {}", parent_polygon.sector_id);
 
@@ -840,7 +703,7 @@ impl FloorBuilder {
             polygon_with_holes_data.push(parent_polygon_data.clone());
 
             for child_polygon_index in children_polygon_indices {
-                continue; // TEMPORARILY SHUTTING OFF CHILD POLY TRIANGULATION
+                // continue; // TEMPORARILY SHUTTING OFF CHILD POLY TRIANGULATION
 
                 let child_polygon = &all_sector_polygons[*child_polygon_index];
 
@@ -848,9 +711,6 @@ impl FloorBuilder {
                     "Triangulating child sector ID: {}, child of sector ID: {}",
                     child_polygon.sector_id, parent_polygon.sector_id
                 );
-
-                // let mut poly2tri_child_polygon_for_hole = poly2tri::Polygon::new();
-                // let mut poly2tri_child_polygon_for_mesh = poly2tri::Polygon::new();
 
                 // For parent holes
                 let mut child_polygon_for_hole_and_own_triangles: Vec<Vec<f32>> = vec![];
@@ -874,13 +734,13 @@ impl FloorBuilder {
 
                 let (child_vertices, child_holes, child_dimensions) =
                     earcutr::flatten(&child_polygon_without_holes_data);
-                let child_triangles_indexed = earcutr::earcut(&child_vertices, &child_holes, child_dimensions);
+                let child_triangles_indexed_usize = earcutr::earcut(&child_vertices, &child_holes, child_dimensions);
 
-                // let child_triangulation_result = child_triangulation.triangulate();
+                let child_triangles_indexed = child_triangles_indexed_usize.iter().map(|i| *i as u32).collect();
 
                 sector_id_to_triangulated_polygons.insert(
                     child_polygon.sector_id,
-                    (child_polygon_for_hole_and_own_triangles, child_triangles_indexed),
+                    (vec![child_polygon_for_hole_and_own_triangles], child_triangles_indexed),
                 );
             }
 
@@ -892,34 +752,28 @@ impl FloorBuilder {
             //  |_| \_|\____/  |_|  |______|
 
             // Now using earcutr
-            // poly2tri (https://crates.io/crates/poly2tri) seems to be broken. It was last maintained 5 years ago, and has fewer downloads than
-            // https://crates.io/crates/earcutr which is more recently updated and has more downloads.
+            // poly2tri (https://crates.io/crates/poly2tri) seems to be broken. It was last maintained 5 years ago, and
+            // has fewer downloads than https://crates.io/crates/earcutr which is more recently updated and has more
+            // downloads.
 
             println!("Attempting to triangulate parent sector {}", parent_polygon.sector_id);
             let (parent_vertices, parent_holes, parent_dimensions) = earcutr::flatten(&polygon_with_holes_data);
-            let parent_triangles_indices = earcutr::earcut(&parent_vertices, &parent_holes, parent_dimensions);
+            let parent_triangles_indices_usize = earcutr::earcut(&parent_vertices, &parent_holes, parent_dimensions);
 
-            println!("4:::::::::::::");
-            println!("{:?}", parent_vertices);
-
-            println!("5:::::::::::::");
-            println!("{:?}", parent_triangles_indices);
-
-            println!("5.5 not so bad:::::::::::::");
-            println!("{:?}", parent_polygon_data);
+            let parent_triangles_indices = parent_triangles_indices_usize.iter().map(|i| *i as u32).collect();
 
             sector_id_to_triangulated_polygons.insert(
                 parent_polygon.sector_id,
-                (parent_polygon_data, parent_triangles_indices),
+                (polygon_with_holes_data, parent_triangles_indices),
             );
         }
 
-        let mut result: HashMap<usize, (Vec<ModelVertex>, Vec<usize>)> = HashMap::new();
+        let mut result: HashMap<usize, (Vec<ModelVertex>, Vec<u32>)> = HashMap::new();
 
         for (sector_id, triangulated_polygon) in sector_id_to_triangulated_polygons {
             println!("Building ModelVertexes for sector ID: {}", sector_id);
 
-            let (parent_vertices, parent_triangles_indices) = triangulated_polygon;
+            let (parent_vertices_groups, parent_triangles_indices) = triangulated_polygon;
 
             let floor_height;
             let sector_floor_and_ceiling_height = self.sector_id_to_floor_and_ceiling_height.get(&sector_id);
@@ -930,42 +784,32 @@ impl FloorBuilder {
             } else {
                 floor_height = 0.0;
                 println!("Could not fetch floor height for sector {}", sector_id);
-                panic!("boom");
             }
 
             let mut verts = vec![];
 
-            for parent_vert in parent_vertices {
-                let model_vertex = ModelVertex {
-                    position: [parent_vert[0], floor_height, -parent_vert[1] as f32].into(), // NOTE: wgpu uses a flipped z axis coordinate system.
-                    tex_coords: [0.0, 1.0].into(),
-                    normal: [0.0, 0.1, 0.0].into(),
-                    // We'll calculate these later
-                    tangent: [0.0; 3].into(),
-                    bitangent: [0.0; 3].into(),
-                };
-                verts.push(model_vertex);
+            for vertices_group in parent_vertices_groups {
+                for parent_vert in vertices_group {
+                    let model_vertex = ModelVertex {
+                        position: [parent_vert[0], floor_height, -parent_vert[1] as f32].into(), // NOTE: wgpu uses a flipped z axis coordinate system.
+                        tex_coords: [0.0, 1.0].into(),
+                        normal: [0.0, 0.1, 0.0].into(),
+                        // We'll calculate these later
+                        tangent: [0.0; 3].into(),
+                        bitangent: [0.0; 3].into(),
+                    };
+                    verts.push(model_vertex);
+                }
             }
 
             let inds = parent_triangles_indices;
-
-            println!("20.verts:::::::::::::");
-            println!("verts: {:?}", verts);
-            println!("20.inds:::::::::::::");
-            println!("inds: {:?}", inds);
-
             let _entry = result.entry(sector_id).or_insert((verts, inds));
         }
-
-        println!("7:::::::::::::");
-        println!("ModelVertexes: {:?}", result);
 
         self.sector_id_to_floor_vertices_with_indices = result;
     }
 
-    pub fn build_floor_meshes(&mut self, device: &wgpu::Device) -> Vec<(Vec<ModelVertex>, Vec<usize>)> {
-        let mut result = vec![];
-
+    pub fn build_floor_meshes(&mut self, device: &wgpu::Device, meshes: &mut Vec<Mesh>) {
         for (sector_id, floor_vertices_with_indices) in &self.sector_id_to_floor_vertices_with_indices {
             println!("Building mesh for sector: {}", sector_id);
 
@@ -1007,126 +851,39 @@ impl FloorBuilder {
                 let bitangent = (delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * r;
 
                 // We'll use the same tangent/bitangent for each vertex in the triangle
-                // floor_vertices[c[0] as usize].tangent = tangent.into();
-                // floor_vertices[c[1] as usize].tangent = tangent.into();
-                // floor_vertices[c[2] as usize].tangent = tangent.into();
+                verts[c[0] as usize].tangent = tangent.into();
+                verts[c[1] as usize].tangent = tangent.into();
+                verts[c[2] as usize].tangent = tangent.into();
 
-                // floor_vertices[c[0] as usize].bitangent = bitangent.into();
-                // floor_vertices[c[1] as usize].bitangent = bitangent.into();
-                // floor_vertices[c[2] as usize].bitangent = bitangent.into();
-
-                verts[c[0] as usize].tangent = [0.0; 3];
-                verts[c[1] as usize].tangent = [0.0; 3];
-                verts[c[2] as usize].tangent = [0.0; 3];
-
-                verts[c[0] as usize].bitangent = [0.0; 3];
-                verts[c[1] as usize].bitangent = [0.0; 3];
-                verts[c[2] as usize].bitangent = [0.0; 3];
+                verts[c[0] as usize].bitangent = bitangent.into();
+                verts[c[1] as usize].bitangent = bitangent.into();
+                verts[c[2] as usize].bitangent = bitangent.into();
             }
 
-            println!("9:::::::::::::");
-            println!("verts: {:?}", verts);
-            println!("verts.len(): {:?}", verts.len());
+            let verts_mucked_in_method: &[u8] = bytemuck::cast_slice(&verts);
 
-            // result.push((verts, inds));
+            let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(&format!("Vertex Buffer 123")),
+                contents: verts_mucked_in_method,
+                usage: wgpu::BufferUsage::VERTEX,
+            });
 
-            // let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            //     label: Some(&format!("Vertex Buffer")),
-            //     contents: bytemuck::cast_slice(&verts),
-            //     usage: wgpu::BufferUsage::VERTEX,
-            // });
-            let test_vertices = vec![
-                ModelVertex {
-                    position: [1216.0, 0.0, 2880.0],
-                    tex_coords: [0.0, 1.0],
-                    normal: [0.0, 0.1, 0.0],
-                    tangent: [0.0, 0.0, 0.0],
-                    bitangent: [0.0, 0.0, 0.0],
-                },
-                ModelVertex {
-                    position: [1248.0, 0.0, 2528.0],
-                    tex_coords: [0.0, 1.0],
-                    normal: [0.0, 0.1, 0.0],
-                    tangent: [0.0, 0.0, 0.0],
-                    bitangent: [0.0, 0.0, 0.0],
-                },
-                ModelVertex {
-                    position: [1472.0, 0.0, 2432.0],
-                    tex_coords: [0.0, 1.0],
-                    normal: [0.0, 0.1, 0.0],
-                    tangent: [0.0, 0.0, 0.0],
-                    bitangent: [0.0, 0.0, 0.0],
-                },
-                ModelVertex {
-                    position: [1472.0, 0.0, 2560.0],
-                    tex_coords: [0.0, 1.0],
-                    normal: [0.0, 0.1, 0.0],
-                    tangent: [0.0, 0.0, 0.0],
-                    bitangent: [0.0, 0.0, 0.0],
-                },
-                ModelVertex {
-                    position: [1384.0, 0.0, 2592.0],
-                    tex_coords: [0.0, 1.0],
-                    normal: [0.0, 0.1, 0.0],
-                    tangent: [0.0, 0.0, 0.0],
-                    bitangent: [0.0, 0.0, 0.0],
-                },
-                ModelVertex {
-                    position: [1344.0, 0.0, 2880.0],
-                    tex_coords: [0.0, 1.0],
-                    normal: [0.0, 0.1, 0.0],
-                    tangent: [0.0, 0.0, 0.0],
-                    bitangent: [0.0, 0.0, 0.0],
-                },
-            ];
+            let inds_mucked_in_method: &[u8] = bytemuck::cast_slice(&inds);
 
-            let test_indices = vec![1, 0, 5, 4, 3, 2, 1, 5, 4, 4, 2, 1];
+            let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(&format!("Index Buffer 123")),
+                contents: inds_mucked_in_method,
+                usage: wgpu::BufferUsage::INDEX,
+            });
 
-            result.push((test_vertices, test_indices));
-
-            // let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            //     label: Some(&format!("Vertex Buffer 123")),
-            //     contents: bytemuck::cast_slice(&test_vertices),
-            //     usage: wgpu::BufferUsage::VERTEX,
-            // });
-
-            // assert_eq!(test_indices, inds.as_slice());
-
-            // println!("10:::::::::::::");
-            // println!("inds: {:?}", inds);
-
-            // let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            //     label: Some(&format!("Index Buffer 123")),
-            //     contents: bytemuck::cast_slice(&test_indices),
-            //     usage: wgpu::BufferUsage::INDEX,
-            // });
-
-            // println!("11:::::::::::::");
-            // println!("inds.len(): {:?}", inds.len());
-
-            // println!("30.1:::::::::::::");
-            // println!("vertex_buffer: {:?}", vertex_buffer);
-
-            // println!("30.2:::::::::::::");
-            // println!("index_buffer: {:?}", index_buffer);
-
-            // meshes_to_add.push(Mesh {
-            //     name: String::from("Foo"),
-            //     vertex_buffer,
-            //     index_buffer,
-            //     num_elements: inds.len() as u32,
-            //     material: 0, // TODO
-            // });
-
-            // meshes.push(Mesh {
-            //     name: String::from("Foo"),
-            //     vertex_buffer,
-            //     index_buffer,
-            //     num_elements: inds.len() as u32,
-            //     material: 0, // TODO
-            // });
+            meshes.push(Mesh {
+                name: String::from("Foo"),
+                vertex_buffer,
+                index_buffer,
+                num_elements: inds.len() as u32,
+                material: 0, // TODO
+            });
         }
-        return result;
     }
 }
 

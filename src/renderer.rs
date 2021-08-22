@@ -2,7 +2,7 @@ pub use super::*;
 
 use model::{DrawLight, DrawModel, Vertex};
 
-const NUM_INSTANCES_PER_ROW: u32 = 1;
+// const NUM_INSTANCES_PER_ROW: u32 = 1;
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
