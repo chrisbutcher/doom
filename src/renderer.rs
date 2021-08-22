@@ -472,12 +472,14 @@ impl State {
 
   pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
     // UPDATED!
-    self.projection.resize(new_size.width, new_size.height);
-    self.size = new_size;
-    self.sc_desc.width = new_size.width;
-    self.sc_desc.height = new_size.height;
-    self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
-    self.depth_texture = texture::Texture::create_depth_texture(&self.device, &self.sc_desc, "depth_texture");
+    if new_size.width > 0 && new_size.height > 0 {
+      self.projection.resize(new_size.width, new_size.height);
+      self.size = new_size;
+      self.sc_desc.width = new_size.width;
+      self.sc_desc.height = new_size.height;
+      self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
+      self.depth_texture = texture::Texture::create_depth_texture(&self.device, &self.sc_desc, "depth_texture");
+    }
   }
 
   // UPDATED!
@@ -562,16 +564,6 @@ impl State {
       render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
       render_pass.set_pipeline(&self.light_render_pipeline);
       render_pass.draw_light_model(&self.obj_model, &self.uniform_bind_group, &self.light_bind_group);
-
-      if false {
-        render_pass.set_pipeline(&self.render_pipeline);
-        render_pass.draw_model_instanced(
-          &self.obj_model,
-          0..self.instances.len() as u32,
-          &self.uniform_bind_group,
-          &self.light_bind_group,
-        );
-      }
 
       render_pass.set_pipeline(&self.render_pipeline);
       render_pass.draw_model_instanced(

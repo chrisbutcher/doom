@@ -1,17 +1,10 @@
 pub use super::*;
 
-use std::collections::HashSet;
-use std::hash::{Hash, Hasher};
-
 use anyhow::*;
 use std::ops::Range;
 
-use geo::algorithm::concave_hull::ConcaveHull;
-use geo::algorithm::convex_hull::ConvexHull;
 use geo::prelude::Contains;
-use geo::winding_order::Winding;
-use geo::{Coordinate, LineString, Polygon};
-// use geo_types::{Coordinate, LineString};
+use geo::{LineString, Polygon};
 
 use wgpu::util::DeviceExt;
 
@@ -354,9 +347,122 @@ impl Model {
         }
 
         floor_builder.build_floors();
-
         floor_builder.debug_draw_floor_svg(&scene.map);
-        floor_builder.build_floor_meshes(device, &mut meshes);
+
+        println!("meshes.len() before: {}", meshes.len());
+
+        let floor_meshes = floor_builder.build_floor_meshes(device);
+
+        for floor_verts_and_indices in floor_meshes {
+            let verts = floor_verts_and_indices.0;
+            let indices = floor_verts_and_indices.1;
+
+            println!("verts sent up: {:?}", verts);
+            println!("indices sent up: {:?}", indices);
+
+            let mucked_from_method: &[u8] = bytemuck::cast_slice(&verts);
+
+            println!("mucked_from_method: {:?}", mucked_from_method);
+
+            let test_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(&format!("Vertex Buffer 123")),
+                contents: mucked_from_method,
+                usage: wgpu::BufferUsage::VERTEX,
+            });
+            let test_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(&format!("Index Buffer 123")),
+                contents: bytemuck::cast_slice(&indices),
+                usage: wgpu::BufferUsage::INDEX,
+            });
+
+            meshes.push(Mesh {
+                name: String::from("Foo"),
+                vertex_buffer: test_vertex_buffer,
+                index_buffer: test_index_buffer,
+                num_elements: indices.len() as u32,
+                material: 0,
+            });
+        }
+
+        println!("meshes.len() after: {}", meshes.len());
+
+        let test_vertices = vec![
+            ModelVertex {
+                position: [1216.0, 0.0, 2880.0],
+                tex_coords: [0.0, 1.0],
+                normal: [0.0, 0.1, 0.0],
+                tangent: [0.0, 0.0, 0.0],
+                bitangent: [0.0, 0.0, 0.0],
+            },
+            ModelVertex {
+                position: [1248.0, 0.0, 2528.0],
+                tex_coords: [0.0, 1.0],
+                normal: [0.0, 0.1, 0.0],
+                tangent: [0.0, 0.0, 0.0],
+                bitangent: [0.0, 0.0, 0.0],
+            },
+            ModelVertex {
+                position: [1472.0, 0.0, 2432.0],
+                tex_coords: [0.0, 1.0],
+                normal: [0.0, 0.1, 0.0],
+                tangent: [0.0, 0.0, 0.0],
+                bitangent: [0.0, 0.0, 0.0],
+            },
+            ModelVertex {
+                position: [1472.0, 0.0, 2560.0],
+                tex_coords: [0.0, 1.0],
+                normal: [0.0, 0.1, 0.0],
+                tangent: [0.0, 0.0, 0.0],
+                bitangent: [0.0, 0.0, 0.0],
+            },
+            ModelVertex {
+                position: [1384.0, 0.0, 2592.0],
+                tex_coords: [0.0, 1.0],
+                normal: [0.0, 0.1, 0.0],
+                tangent: [0.0, 0.0, 0.0],
+                bitangent: [0.0, 0.0, 0.0],
+            },
+            ModelVertex {
+                position: [1344.0, 0.0, 2880.0],
+                tex_coords: [0.0, 1.0],
+                normal: [0.0, 0.1, 0.0],
+                tangent: [0.0, 0.0, 0.0],
+                bitangent: [0.0, 0.0, 0.0],
+            },
+        ];
+        let test_indices = vec![1, 0, 5, 4, 3, 2, 1, 5, 4, 4, 2, 1];
+
+        println!("test_vertices at this level: {:?}", test_vertices);
+
+        println!("test_indices at this level: {:?}", test_indices);
+
+        let mucked_at_level: &[u8] = bytemuck::cast_slice(&test_vertices);
+        println!("mucked_at_level: {:?}", mucked_at_level);
+
+        let test_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(&format!("Vertex Buffer 123")),
+            contents: mucked_at_level,
+            usage: wgpu::BufferUsage::VERTEX,
+        });
+        let test_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(&format!("Index Buffer 123")),
+            contents: bytemuck::cast_slice(&test_indices),
+            usage: wgpu::BufferUsage::INDEX,
+        });
+
+        // meshes.push(Mesh {
+        //     name: String::from("Foo"),
+        //     vertex_buffer: test_vertex_buffer,
+        //     index_buffer: test_index_buffer,
+        //     num_elements: test_indices.len() as u32,
+        //     material: 0,
+        // });
+
+        println!("100.1 getting last two pushed meshes for comparison:");
+        let last_two = meshes.iter().rev().take(2);
+        for mesh in last_two {
+            println!("mesh: {:?}", mesh);
+        }
 
         Ok(Self { meshes, materials })
     }
@@ -820,9 +926,11 @@ impl FloorBuilder {
 
             if let Some(sector_floor_and_ceiling_height) = sector_floor_and_ceiling_height {
                 floor_height = sector_floor_and_ceiling_height.floor_height;
+                println!("Found floor height for sector {}: {}", sector_id, floor_height);
             } else {
                 floor_height = 0.0;
                 println!("Could not fetch floor height for sector {}", sector_id);
+                panic!("boom");
             }
 
             let mut verts = vec![];
@@ -855,7 +963,9 @@ impl FloorBuilder {
         self.sector_id_to_floor_vertices_with_indices = result;
     }
 
-    pub fn build_floor_meshes(&mut self, device: &wgpu::Device, meshes: &mut Vec<Mesh>) {
+    pub fn build_floor_meshes(&mut self, device: &wgpu::Device) -> Vec<(Vec<ModelVertex>, Vec<usize>)> {
+        let mut result = vec![];
+
         for (sector_id, floor_vertices_with_indices) in &self.sector_id_to_floor_vertices_with_indices {
             println!("Building mesh for sector: {}", sector_id);
 
@@ -918,38 +1028,105 @@ impl FloorBuilder {
             println!("verts: {:?}", verts);
             println!("verts.len(): {:?}", verts.len());
 
-            let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("Vertex Buffer (TODO name)")),
-                contents: bytemuck::cast_slice(&verts),
-                usage: wgpu::BufferUsage::VERTEX,
-            });
+            // result.push((verts, inds));
 
-            println!("10:::::::::::::");
-            println!("inds: {:?}", inds);
+            // let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            //     label: Some(&format!("Vertex Buffer")),
+            //     contents: bytemuck::cast_slice(&verts),
+            //     usage: wgpu::BufferUsage::VERTEX,
+            // });
+            let test_vertices = vec![
+                ModelVertex {
+                    position: [1216.0, 0.0, 2880.0],
+                    tex_coords: [0.0, 1.0],
+                    normal: [0.0, 0.1, 0.0],
+                    tangent: [0.0, 0.0, 0.0],
+                    bitangent: [0.0, 0.0, 0.0],
+                },
+                ModelVertex {
+                    position: [1248.0, 0.0, 2528.0],
+                    tex_coords: [0.0, 1.0],
+                    normal: [0.0, 0.1, 0.0],
+                    tangent: [0.0, 0.0, 0.0],
+                    bitangent: [0.0, 0.0, 0.0],
+                },
+                ModelVertex {
+                    position: [1472.0, 0.0, 2432.0],
+                    tex_coords: [0.0, 1.0],
+                    normal: [0.0, 0.1, 0.0],
+                    tangent: [0.0, 0.0, 0.0],
+                    bitangent: [0.0, 0.0, 0.0],
+                },
+                ModelVertex {
+                    position: [1472.0, 0.0, 2560.0],
+                    tex_coords: [0.0, 1.0],
+                    normal: [0.0, 0.1, 0.0],
+                    tangent: [0.0, 0.0, 0.0],
+                    bitangent: [0.0, 0.0, 0.0],
+                },
+                ModelVertex {
+                    position: [1384.0, 0.0, 2592.0],
+                    tex_coords: [0.0, 1.0],
+                    normal: [0.0, 0.1, 0.0],
+                    tangent: [0.0, 0.0, 0.0],
+                    bitangent: [0.0, 0.0, 0.0],
+                },
+                ModelVertex {
+                    position: [1344.0, 0.0, 2880.0],
+                    tex_coords: [0.0, 1.0],
+                    normal: [0.0, 0.1, 0.0],
+                    tangent: [0.0, 0.0, 0.0],
+                    bitangent: [0.0, 0.0, 0.0],
+                },
+            ];
 
-            let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("Index Buffer (TODO name)")),
-                contents: bytemuck::cast_slice(&inds),
-                usage: wgpu::BufferUsage::INDEX,
-            });
+            let test_indices = vec![1, 0, 5, 4, 3, 2, 1, 5, 4, 4, 2, 1];
 
-            println!("11:::::::::::::");
-            println!("inds.len(): {:?}", inds.len());
+            result.push((test_vertices, test_indices));
 
-            println!("30.1:::::::::::::");
-            println!("vertex_buffer: {:?}", vertex_buffer);
+            // let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            //     label: Some(&format!("Vertex Buffer 123")),
+            //     contents: bytemuck::cast_slice(&test_vertices),
+            //     usage: wgpu::BufferUsage::VERTEX,
+            // });
 
-            println!("30.2:::::::::::::");
-            println!("index_buffer: {:?}", index_buffer);
+            // assert_eq!(test_indices, inds.as_slice());
 
-            meshes.push(Mesh {
-                name: String::from("Some floor"),
-                vertex_buffer,
-                index_buffer,
-                num_elements: inds.len() as u32,
-                material: 0, // TODO
-            });
+            // println!("10:::::::::::::");
+            // println!("inds: {:?}", inds);
+
+            // let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            //     label: Some(&format!("Index Buffer 123")),
+            //     contents: bytemuck::cast_slice(&test_indices),
+            //     usage: wgpu::BufferUsage::INDEX,
+            // });
+
+            // println!("11:::::::::::::");
+            // println!("inds.len(): {:?}", inds.len());
+
+            // println!("30.1:::::::::::::");
+            // println!("vertex_buffer: {:?}", vertex_buffer);
+
+            // println!("30.2:::::::::::::");
+            // println!("index_buffer: {:?}", index_buffer);
+
+            // meshes_to_add.push(Mesh {
+            //     name: String::from("Foo"),
+            //     vertex_buffer,
+            //     index_buffer,
+            //     num_elements: inds.len() as u32,
+            //     material: 0, // TODO
+            // });
+
+            // meshes.push(Mesh {
+            //     name: String::from("Foo"),
+            //     vertex_buffer,
+            //     index_buffer,
+            //     num_elements: inds.len() as u32,
+            //     material: 0, // TODO
+            // });
         }
+        return result;
     }
 }
 
@@ -1123,45 +1300,42 @@ impl<'a> WallBuilder<'a> {
     }
 }
 
-pub trait DrawModel<'a, 'b>
-where
-    'b: 'a,
-{
+pub trait DrawModel<'a> {
     fn draw_mesh(
         &mut self,
-        mesh: &'b Mesh,
-        material: &'b Material,
-        uniforms: &'b wgpu::BindGroup,
-        light: &'b wgpu::BindGroup,
+        mesh: &'a Mesh,
+        material: &'a Material,
+        uniforms: &'a wgpu::BindGroup,
+        light: &'a wgpu::BindGroup,
     );
     fn draw_mesh_instanced(
         &mut self,
-        mesh: &'b Mesh,
-        material: &'b Material,
+        mesh: &'a Mesh,
+        material: &'a Material,
         instances: Range<u32>,
-        uniforms: &'b wgpu::BindGroup,
-        light: &'b wgpu::BindGroup,
+        uniforms: &'a wgpu::BindGroup,
+        light: &'a wgpu::BindGroup,
     );
 
-    fn draw_model(&mut self, model: &'b Model, uniforms: &'b wgpu::BindGroup, light: &'b wgpu::BindGroup);
+    fn draw_model(&mut self, model: &'a Model, uniforms: &'a wgpu::BindGroup, light: &'a wgpu::BindGroup);
     fn draw_model_instanced(
         &mut self,
-        model: &'b Model,
+        model: &'a Model,
         instances: Range<u32>,
-        uniforms: &'b wgpu::BindGroup,
-        light: &'b wgpu::BindGroup,
+        uniforms: &'a wgpu::BindGroup,
+        light: &'a wgpu::BindGroup,
     );
     fn draw_model_instanced_with_material(
         &mut self,
-        model: &'b Model,
-        material: &'b Material,
+        model: &'a Model,
+        material: &'a Material,
         instances: Range<u32>,
-        uniforms: &'b wgpu::BindGroup,
-        light: &'b wgpu::BindGroup,
+        uniforms: &'a wgpu::BindGroup,
+        light: &'a wgpu::BindGroup,
     );
 }
 
-impl<'a, 'b> DrawModel<'a, 'b> for wgpu::RenderPass<'a>
+impl<'a, 'b> DrawModel<'b> for wgpu::RenderPass<'a>
 where
     'b: 'a,
 {
@@ -1186,8 +1360,8 @@ where
         self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
         self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         self.set_bind_group(0, &material.bind_group, &[]);
-        self.set_bind_group(1, &uniforms, &[]);
-        self.set_bind_group(2, &light, &[]);
+        self.set_bind_group(1, uniforms, &[]);
+        self.set_bind_group(2, light, &[]);
         self.draw_indexed(0..mesh.num_elements, 0, instances);
     }
 
@@ -1222,31 +1396,27 @@ where
     }
 }
 
-pub trait DrawLight<'a, 'b>
-where
-    'b: 'a,
-{
-    fn draw_light_mesh(&mut self, mesh: &'b Mesh, uniforms: &'b wgpu::BindGroup, light: &'b wgpu::BindGroup);
+pub trait DrawLight<'a> {
+    fn draw_light_mesh(&mut self, mesh: &'a Mesh, uniforms: &'a wgpu::BindGroup, light: &'a wgpu::BindGroup);
     fn draw_light_mesh_instanced(
         &mut self,
-        mesh: &'b Mesh,
+        mesh: &'a Mesh,
         instances: Range<u32>,
-        uniforms: &'b wgpu::BindGroup,
-        light: &'b wgpu::BindGroup,
-    ) where
-        'b: 'a;
+        uniforms: &'a wgpu::BindGroup,
+        light: &'a wgpu::BindGroup,
+    );
 
-    fn draw_light_model(&mut self, model: &'b Model, uniforms: &'b wgpu::BindGroup, light: &'b wgpu::BindGroup);
+    fn draw_light_model(&mut self, model: &'a Model, uniforms: &'a wgpu::BindGroup, light: &'a wgpu::BindGroup);
     fn draw_light_model_instanced(
         &mut self,
-        model: &'b Model,
+        model: &'a Model,
         instances: Range<u32>,
-        uniforms: &'b wgpu::BindGroup,
-        light: &'b wgpu::BindGroup,
+        uniforms: &'a wgpu::BindGroup,
+        light: &'a wgpu::BindGroup,
     );
 }
 
-impl<'a, 'b> DrawLight<'a, 'b> for wgpu::RenderPass<'a>
+impl<'a, 'b> DrawLight<'b> for wgpu::RenderPass<'a>
 where
     'b: 'a,
 {
