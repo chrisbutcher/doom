@@ -2,8 +2,8 @@
 
 An experimental Doom level renderer
 
+![image](https://user-images.githubusercontent.com/1916444/130364079-a2a09d06-ad87-4fae-a9cb-2b875c2a8ac2.png)
 
-![image](https://github.com/chrisbutcher/doom/blob/master/progress%20pics/simple%20walls,%20steps.png?raw=true)
 
 ## Notes / refresher material:
 
