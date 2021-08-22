@@ -335,7 +335,10 @@ impl Model {
         }
 
         floor_builder.build_floors();
-        floor_builder.debug_draw_floor_svg(&scene.map);
+        // map_svg::draw_map_svg_with_floors(
+        //     floor_builder.sector_id_to_floor_vertices_with_indices.clone(),
+        //     &scene.map,
+        // );
         floor_builder.build_floor_meshes(device, &mut meshes);
 
         Ok(Self { meshes, materials })
@@ -415,103 +418,6 @@ impl FloorBuilder {
             sector_id_to_floor_and_ceiling_height: HashMap::new(),
             sector_id_to_floor_vertices_with_indices: HashMap::new(),
         }
-    }
-
-    pub fn debug_draw_floor_svg(&self, map: &maps::Map) {
-        let mut document = Document::new();
-
-        let map_x_offset = 0 - map.map_centerer.left_most_x;
-        let map_y_offset = 0 - map.map_centerer.upper_most_y;
-
-        for line in &map.linedefs {
-            let v1_index = line.start_vertex;
-            let v2_index = line.end_vertex;
-
-            let v1 = &map.vertexes[v1_index];
-            let v2 = &map.vertexes[v2_index];
-
-            let v1_x = v1.x + map_x_offset;
-            let v2_x = v2.x + map_x_offset;
-            let v1_y = v1.y + map_y_offset;
-            let v2_y = v2.y + map_y_offset;
-
-            let path = Path::new()
-                .set("fill", "none")
-                .set("stroke", "black")
-                .set("stroke-width", 10)
-                .set(
-                    "d",
-                    Data::new()
-                        .move_to((v1_x, -v1_y)) // flipping y axis at the last moment to account for SVG convention
-                        .line_to((v2_x, -v2_y))
-                        .close(),
-                );
-
-            document = document.clone().add(path);
-        }
-
-        let mut vertex_pairs: Vec<[ModelVertex; 2]> = Vec::new();
-
-        for (sector_id, vertices_with_indices) in &self.sector_id_to_floor_vertices_with_indices {
-            let verts = vertices_with_indices.0.clone();
-            let inds = vertices_with_indices.1.clone();
-
-            println!("Drawing debug SVG vertices for sector: {}", sector_id);
-            println!("verts.len(): {}, inds.len(): {}", verts.len(), inds.len());
-
-            println!("{:?}", vertices_with_indices);
-
-            for ind_chunk in inds.chunks(3) {
-                let v0 = verts[ind_chunk[0] as usize];
-                let v1 = verts[ind_chunk[1] as usize];
-                let v2 = verts[ind_chunk[2] as usize];
-
-                vertex_pairs.push([v0, v1]);
-                vertex_pairs.push([v1, v2]);
-                vertex_pairs.push([v2, v0]);
-            }
-        }
-
-        for pair in &vertex_pairs {
-            let v1 = pair[0];
-            let v2 = pair[1];
-
-            let v1_x = v1.position[0] as i16 + map_x_offset;
-            let v2_x = v2.position[0] as i16 + map_x_offset;
-            let v1_y = -v1.position[2] as i16 + map_y_offset;
-            let v2_y = -v2.position[2] as i16 + map_y_offset;
-
-            let path = Path::new()
-                .set("fill", "none")
-                .set("stroke", "red")
-                .set("stroke-width", 6)
-                .set(
-                    "d",
-                    Data::new()
-                        .move_to((v1_x, -v1_y)) // flipping y axis at the last moment to account for SVG convention
-                        .line_to((v2_x, -v2_y))
-                        .close(),
-                );
-
-            document = document.clone().add(path);
-        }
-
-        let filename = format!(
-            "{}{}{}{} -- with floors.svg",
-            map.name.chars().nth(0).unwrap(),
-            map.name.chars().nth(1).unwrap(),
-            map.name.chars().nth(2).unwrap(),
-            map.name.chars().nth(3).unwrap(),
-        );
-
-        let width = map.map_centerer.right_most_x - map.map_centerer.left_most_x;
-        let height = map.map_centerer.upper_most_y - map.map_centerer.lower_most_y;
-        document = document
-            .clone()
-            .set("viewBox", (-10, -10, width as i32 * 5, height as i32 * 5))
-            .set("width", width)
-            .set("height", height);
-        svg::save(filename.trim(), &document).unwrap();
     }
 
     pub fn track_sector_boundaries(
@@ -696,7 +602,6 @@ impl FloorBuilder {
 
             // Exclude last point, since poly2tri library panics on duplicated points in a polygon
             for point in p_points.iter().take(p_points_len - 1) {
-                // poly2tri_parent_polygon.add_point(point.x() as f64, point.y() as f64);
                 parent_polygon_data.push(vec![point.x(), point.y()]);
             }
 
