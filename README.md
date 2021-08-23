@@ -6,6 +6,8 @@ An experimental Doom level renderer
 
 ## Notes / refresher material:
 
+* https://fabiensanglard.net/gebbdoom/
+* https://sotrh.github.io/learn-wgpu/
 * https://www.youtube.com/watch?v=svKVqROlVSg
 * https://learnopengl.com/Getting-started/Camera
 * https://www.youtube.com/playlist?list=PLZHQObOWTQDPD3MizzM2xVFitgF8hE_ab
