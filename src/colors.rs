@@ -19,7 +19,6 @@ pub fn load_first_palette(wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>) -> Vec<w
 
 pub fn load_first_colormap(wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>) -> wad_graphics::Colormap {
   let colormap_lump = lumps.iter().find(|&l| l.name == "COLORMAP").unwrap();
-  // TODO
 
   let colormap_raw: Vec<usize> = wad_file[colormap_lump.filepos..colormap_lump.filepos + 256]
     .to_vec()

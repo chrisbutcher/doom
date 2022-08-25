@@ -12,6 +12,8 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
     0.0, 0.0, 0.5, 1.0,
 );
 
+const SAFE_FRAC_PI_2: f32 = FRAC_PI_2 - 0.0001;
+
 #[derive(Debug)]
 pub struct Camera {
     pub position: Point3<f32>,

@@ -89,6 +89,10 @@ fn main() {
         colormap: colormap,
     };
 
+    pollster::block_on(run(scene));
+}
+
+pub async fn run(scene: Scene) {
     env_logger::init();
     let event_loop = EventLoop::new();
     let title = env!("CARGO_PKG_NAME");
@@ -96,9 +100,10 @@ fn main() {
         .with_title(title)
         .build(&event_loop)
         .unwrap();
-    use futures::executor::block_on;
-    let mut state = block_on(renderer::State::new(&window, scene));
+
+    let mut state = renderer::State::new(&window, scene).await;
     let mut last_render_time = std::time::Instant::now();
+
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
         match event {
@@ -129,22 +134,24 @@ fn main() {
                         state.resize(*physical_size);
                     }
                     WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                        // new_inner_size is &&mut so we have to dereference it twice
                         state.resize(**new_inner_size);
                     }
                     _ => {}
                 }
             }
-            Event::RedrawRequested(_) => {
+             Event::RedrawRequested(window_id) if window_id == window.id() => {
                 let now = std::time::Instant::now();
                 let dt = now - last_render_time;
                 last_render_time = now;
                 state.update(dt);
+
                 match state.render() {
                     Ok(_) => {}
-                    // Recreate the swap_chain if lost
-                    Err(wgpu::SwapChainError::Lost) => state.resize(state.size),
+                    // Reconfigure the surface if lost
+                    Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
                     // The system is out of memory, we should probably quit
-                    Err(wgpu::SwapChainError::OutOfMemory) => *control_flow = ControlFlow::Exit,
+                    Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
                     // All other errors (Outdated, Timeout) should be resolved by the next frame
                     Err(e) => eprintln!("{:?}", e),
                 }

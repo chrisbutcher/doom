@@ -2,7 +2,8 @@
 name = "doom"
 version = "0.1.0"
 authors = ["Chris Butcher <cbutcher@gmail.com>"]
-edition = "2018"
+edition = "2021"
+resolver = "2"
 
 [dependencies]
 anyhow = "1.0"
@@ -10,11 +11,12 @@ bytemuck = { version = "1.7", features = [ "derive" ] }
 cgmath = "0.18"
 env_logger = "0.9"
 futures = "0.3"
-image = "0.23"
+#image = "0.23"
 log = "0.4"
 tobj = "3.0"
-wgpu = "0.9"
-winit = "0.25"
+wgpu = "0.13"
+winit = "0.26"
+pollster = "0.2"
 
 # Doom specific
 regex = "1.4.3"
@@ -25,8 +27,14 @@ geo = "0.17.1"
 poly2tri = "0.1.0"
 earcutr = "0.2.0"
 
+[dependencies.image]
+version = "0.24"
+default-features = false
+features = ["png", "jpeg"]
+
 [build-dependencies]
 anyhow = "1.0"
 fs_extra = "1.2"
 glob = "0.3"
-shaderc = "0.7"
+
+#shaderc = "0.7" ## Removed when updating wgpu to 0.13

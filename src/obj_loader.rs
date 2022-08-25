@@ -116,12 +116,12 @@ impl model::Model {
       let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some(&format!("{:?} Vertex Buffer", path.as_ref())),
         contents: bytemuck::cast_slice(&vertices),
-        usage: wgpu::BufferUsage::VERTEX,
+        usage: wgpu::BufferUsages::VERTEX,
       });
       let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some(&format!("{:?} Index Buffer", path.as_ref())),
         contents: bytemuck::cast_slice(&m.mesh.indices),
-        usage: wgpu::BufferUsage::INDEX,
+        usage: wgpu::BufferUsages::INDEX,
       });
 
       meshes.push(model::Mesh {
