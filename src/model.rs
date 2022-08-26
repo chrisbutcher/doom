@@ -28,7 +28,7 @@ pub struct ModelVertex {
     pub bitangent: [f32; 3],
 }
 
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct Material {
     pub name: String,
     pub diffuse_texture: texture::Texture,
@@ -45,7 +45,7 @@ pub struct Mesh {
     pub material: usize,
 }
 
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct Model {
     pub meshes: Vec<Mesh>,
     pub materials: Vec<Material>,
@@ -73,17 +73,6 @@ impl Vertex for ModelVertex {
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float32x3,
                 },
-                // Tangent and bitangent
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
-                    shader_location: 3,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 11]>() as wgpu::BufferAddress,
-                    shader_location: 4,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
             ],
         }
     }
@@ -108,16 +97,8 @@ impl Material {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
                 },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&normal_texture.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::Sampler(&normal_texture.sampler),
-                },
             ],
-            label: Some(name),
+            label: None,
         });
 
         Self {
@@ -253,7 +234,7 @@ impl Model {
 
         let res_dir = std::path::Path::new(env!("OUT_DIR")).join("res");
         let normal_path = String::from("flat-normal.png"); // TODO: Try generating normal maps from diffuse?
-        let normal_texture = Rc::new(texture::Texture::load(device, queue, res_dir.join(normal_path), true)?);
+        let normal_texture = Rc::new(texture::Texture::load(device, queue, res_dir.join(normal_path))?);
 
         for line in &scene.map.linedefs {
             let start_vertex_index = line.start_vertex;
@@ -799,8 +780,7 @@ impl<'a> WallBuilder<'a> {
 
     pub fn load_diffuse_texture_by_name(self, texture_name: &str) -> texture::Texture {
         let (doom_texture, (_width, _height)) = wad_graphics::texture_to_gl_texture(self.scene, texture_name);
-        let diffuse_texture =
-            texture::Texture::from_image(self.device, self.queue, &doom_texture, None, false).unwrap();
+        let diffuse_texture = texture::Texture::from_image(self.device, self.queue, &doom_texture, None).unwrap();
 
         diffuse_texture
     }

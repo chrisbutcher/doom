@@ -5,6 +5,8 @@ authors = ["Chris Butcher <cbutcher@gmail.com>"]
 edition = "2021"
 resolver = "2"
 
+# TODO: Remove unused deps.
+
 [dependencies]
 anyhow = "1.0"
 bytemuck = { version = "1.7", features = [ "derive" ] }
@@ -17,6 +19,7 @@ tobj = "3.0"
 wgpu = "0.13"
 winit = "0.26"
 pollster = "0.2"
+instant = "0.1"
 
 # Doom specific
 regex = "1.4.3"
