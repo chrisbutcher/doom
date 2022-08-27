@@ -22,11 +22,7 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn new<V: Into<Point3<f32>>, Y: Into<Rad<f32>>, P: Into<Rad<f32>>>(
-        position: V,
-        yaw: Y,
-        pitch: P,
-    ) -> Self {
+    pub fn new<V: Into<Point3<f32>>, Y: Into<Rad<f32>>, P: Into<Rad<f32>>>(position: V, yaw: Y, pitch: P) -> Self {
         Self {
             position: position.into(),
             yaw: yaw.into(),
@@ -104,12 +100,8 @@ impl CameraController {
         }
     }
 
-    pub fn process_keyboard(&mut self, key: VirtualKeyCode, state: ElementState) -> bool {
-        let amount = if state == ElementState::Pressed {
-            1.0
-        } else {
-            0.0
-        };
+    pub fn process_keyboard(&mut self, key: VirtualKeyCode, state: ElementState, camera: &Camera) -> bool {
+        let amount = if state == ElementState::Pressed { 1.0 } else { 0.0 };
         match key {
             VirtualKeyCode::W | VirtualKeyCode::Up => {
                 self.amount_forward = amount;
@@ -133,6 +125,21 @@ impl CameraController {
             }
             VirtualKeyCode::LShift => {
                 self.amount_down = amount;
+                true
+            }
+            VirtualKeyCode::Q => {
+                self.rotate_horizontal -= amount;
+                true
+            }
+            VirtualKeyCode::E => {
+                self.rotate_horizontal += amount;
+                true
+            }
+            VirtualKeyCode::F1 => {
+                println!(
+                    "{:?} -- Yaw: {:?} -- Pitch: {:?}",
+                    camera.position, camera.yaw, camera.pitch
+                );
                 true
             }
             _ => false,
@@ -167,8 +174,7 @@ impl CameraController {
         // changes when zooming. I've added this to make it easier
         // to get closer to an object you want to focus on.
         let (pitch_sin, pitch_cos) = camera.pitch.0.sin_cos();
-        let scrollward =
-            Vector3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalize();
+        let scrollward = Vector3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalize();
         camera.position += scrollward * self.scroll * self.speed * self.sensitivity * dt;
         self.scroll = 0.0;
 

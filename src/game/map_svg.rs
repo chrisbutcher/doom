@@ -1,7 +1,6 @@
 use super::*;
 use crate::model::ModelVertex;
 
-// use crate::ModelVertex;
 use std::cmp;
 use std::collections::HashMap;
 use svg::node::element::path::Data;

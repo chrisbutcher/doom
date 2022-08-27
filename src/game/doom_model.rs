@@ -10,6 +10,10 @@ use geo::{LineString, Polygon};
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
+use wgpu::util::DeviceExt;
+
+// This file contains a bunch of Doom-specific types, impls on wgpu tutorial types to try to reduce
+// coupling/dependency on the changing wgpu crate and wgpu tutorial.
 
 #[derive(Copy, Clone, Debug)]
 pub struct GeoLine {
@@ -67,9 +71,8 @@ impl Model {
         vertex_2: &maps::MapVertex,
         wall_height_bottom: f32,
         wall_height_top: f32,
-    ) {
-        // ) -> (wgpu::Buffer, wgpu::Buffer) {
-
+        // ) {
+    ) -> (wgpu::Buffer, wgpu::Buffer) {
         //     // C *------* D
         //     //   | \  2 |
         //     //   |  \   |
@@ -156,20 +159,19 @@ impl Model {
             vertices[c[2] as usize].bitangent = bitangent.into();
         }
 
-        // let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some(&format!("Vertex Buffer (TODO name)")),
-        //     contents: bytemuck::cast_slice(&vertices),
-        //     usage: wgpu::BufferUsages::VERTEX,
-        // });
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(&format!("Vertex Buffer (TODO name)")),
+            contents: bytemuck::cast_slice(&vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
 
-        // let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some(&format!("Index Buffer (TODO name)")),
-        //     contents: bytemuck::cast_slice(&indices),
-        //     usage: wgpu::BufferUsages::INDEX,
-        // });
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(&format!("Index Buffer (TODO name)")),
+            contents: bytemuck::cast_slice(&indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
 
-        panic!("Need to impl this.")
-        // (vertex_buffer, index_buffer)
+        (vertex_buffer, index_buffer)
     }
 
     pub fn load_scene(
@@ -431,8 +433,8 @@ impl<'a> WallBuilder<'a> {
         wall_height_bottom: f32,
         wall_height_top: f32,
     ) {
-        // let (vertex_buffer, index_buffer) =
-        Model::build_wall_vertices_indices(self.device, vertex_1, vertex_2, wall_height_bottom, wall_height_top);
+        let (vertex_buffer, index_buffer) =
+            Model::build_wall_vertices_indices(self.device, vertex_1, vertex_2, wall_height_bottom, wall_height_top);
 
         let material_index = self.store_texture_as_material(
             &texture_name,
@@ -441,15 +443,13 @@ impl<'a> WallBuilder<'a> {
             texture_name_to_material_index,
         );
 
-        panic!("deal with vertex/index buffers");
-
-        // meshes.push(Mesh {
-        //     name: String::from("Some wall"),
-        //     vertex_buffer,
-        //     index_buffer,
-        //     num_elements: 6,
-        //     material: material_index,
-        // });
+        meshes.push(Mesh {
+            name: String::from("Some wall"),
+            vertex_buffer,
+            index_buffer,
+            num_elements: 6,
+            material: material_index,
+        });
     }
 }
 
@@ -820,30 +820,28 @@ impl FloorBuilder {
                 vertices[c[2] as usize].bitangent = bitangent.into();
             }
 
-            // let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            //     label: Some(&format!("Vertex Buffer 123")),
-            //     contents: bytemuck::cast_slice(&vertices),
-            //     usage: wgpu::BufferUsages::VERTEX,
-            // });
+            let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(&format!("Vertex Buffer 123")),
+                contents: bytemuck::cast_slice(&vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
 
             // NOTE! If indices are passed in as anything other than u32s, polygons will render, but will be broken.
             let indices_u8_slice: &[u8] = bytemuck::cast_slice(&indices);
 
-            // let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            //     label: Some(&format!("Index Buffer 123")),
-            //     contents: indices_u8_slice,
-            //     usage: wgpu::BufferUsages::INDEX,
-            // });
+            let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(&format!("Index Buffer 123")),
+                contents: indices_u8_slice,
+                usage: wgpu::BufferUsages::INDEX,
+            });
 
-            panic!("deal with vertex/index buffers");
-
-            // meshes.push(Mesh {
-            //     name: String::from("Foo"),
-            //     vertex_buffer,
-            //     index_buffer,
-            //     num_elements: indices.len() as u32,
-            //     material: 0, // TODO
-            // });
+            meshes.push(Mesh {
+                name: String::from("Foo"),
+                vertex_buffer,
+                index_buffer,
+                num_elements: indices.len() as u32,
+                material: 0, // TODO
+            });
         }
     }
 }

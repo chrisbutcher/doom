@@ -13,17 +13,13 @@ use winit::{
 use wasm_bindgen::prelude::*;
 
 mod camera;
+pub mod game;
 mod model;
 mod resources;
 mod texture;
 
-pub mod game;
-use game::doom_model;
 use game::scene::Scene;
-
 use model::{DrawLight, DrawModel, Vertex};
-
-const NUM_INSTANCES_PER_ROW: u32 = 10;
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -139,7 +135,6 @@ struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     render_pipeline: wgpu::RenderPipeline,
-    obj_model: model::Model,
     camera: camera::Camera,                      // UPDATED!
     projection: camera::Projection,              // NEW!
     camera_controller: camera::CameraController, // UPDATED!
@@ -160,7 +155,8 @@ struct State {
     // NEW!
     mouse_pressed: bool,
     // Doom-specific:
-    scene: Scene,
+    _scene: Scene,
+    level_model: model::Model,
 }
 
 fn create_render_pipeline(
@@ -307,9 +303,10 @@ impl State {
         });
 
         // UPDATED!
-        let camera = camera::Camera::new((0.0, 5.0, 10.0), cgmath::Deg(-90.0), cgmath::Deg(-20.0));
-        let projection = camera::Projection::new(config.width, config.height, cgmath::Deg(45.0), 0.1, 100.0);
-        let camera_controller = camera::CameraController::new(4.0, 0.4);
+        // Doom-specific
+        let camera = camera::Camera::new((1073.0, 50.0, 3635.0), cgmath::Deg(-90.0), cgmath::Deg(0.0));
+        let projection = camera::Projection::new(config.width, config.height, cgmath::Deg(90.0), 0.1, 100000.0);
+        let camera_controller = camera::CameraController::new(400.0, 4.4);
 
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_proj(&camera, &projection);
@@ -320,25 +317,10 @@ impl State {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        const SPACE_BETWEEN: f32 = 3.0;
-        let instances = (0..NUM_INSTANCES_PER_ROW)
-            .flat_map(|z| {
-                (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                    let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-                    let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-
-                    let position = cgmath::Vector3 { x, y: 0.0, z };
-
-                    let rotation = if position.is_zero() {
-                        cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
-                    } else {
-                        cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
-                    };
-
-                    Instance { position, rotation }
-                })
-            })
-            .collect::<Vec<_>>();
+        let instances = vec![Instance {
+            position: cgmath::Vector3 { x: 0.0, y: 0.0, z: 0.0 },
+            rotation: cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0)),
+        }];
 
         let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -370,10 +352,11 @@ impl State {
             label: Some("camera_bind_group"),
         });
 
-        let obj_model = resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
+        let _obj_model = resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
             .await
             .unwrap();
 
+        // Doom-specific
         let level_model = model::Model::load_scene(&device, &queue, &texture_bind_group_layout, &scene).unwrap();
 
         let light_uniform = LightUniform {
@@ -483,7 +466,7 @@ impl State {
             queue,
             config,
             render_pipeline,
-            obj_model,
+            // obj_model,
             camera,
             projection,
             camera_controller,
@@ -503,7 +486,8 @@ impl State {
             // NEW!
             mouse_pressed: false,
             // Doom-specific:
-            scene,
+            _scene: scene,
+            level_model,
         }
     }
 
@@ -530,7 +514,7 @@ impl State {
                         ..
                     },
                 ..
-            } => self.camera_controller.process_keyboard(*key, *state),
+            } => self.camera_controller.process_keyboard(*key, *state, &self.camera),
             WindowEvent::MouseWheel { delta, .. } => {
                 self.camera_controller.process_scroll(delta);
                 true
@@ -598,11 +582,13 @@ impl State {
 
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
             render_pass.set_pipeline(&self.light_render_pipeline);
-            render_pass.draw_light_model(&self.obj_model, &self.camera_bind_group, &self.light_bind_group);
+            render_pass.draw_light_model(&self.level_model, &self.camera_bind_group, &self.light_bind_group);
 
             render_pass.set_pipeline(&self.render_pipeline);
+
+            // Doom-specific
             render_pass.draw_model_instanced(
-                &self.obj_model,
+                &self.level_model,
                 0..self.instances.len() as u32,
                 &self.camera_bind_group,
                 &self.light_bind_group,
