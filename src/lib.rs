@@ -581,8 +581,10 @@ impl State {
             });
 
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-            render_pass.set_pipeline(&self.light_render_pipeline);
-            render_pass.draw_light_model(&self.level_model, &self.camera_bind_group, &self.light_bind_group);
+
+            // Not needed. Borrowed from wgpu tutorial.
+            // render_pass.set_pipeline(&self.light_render_pipeline);
+            // render_pass.draw_light_model(&self.level_model, &self.camera_bind_group, &self.light_bind_group);
 
             render_pass.set_pipeline(&self.render_pipeline);
 

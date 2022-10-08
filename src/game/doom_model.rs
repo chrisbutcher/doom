@@ -1,4 +1,3 @@
-use crate::game::map_svg;
 use crate::game::maps;
 use crate::game::scene::*;
 use crate::game::wad_graphics;
@@ -270,12 +269,13 @@ impl Model {
 
         floor_builder.build_floors();
 
+        // TODO: Re-enable via an CLI arg.
         // let handler = thread::spawn(|| {
-        map_svg::draw_map_svg_with_floors(
-            // TODO: Do this in a separate thread for speed?
-            floor_builder.sector_id_to_floor_vertices_with_indices.clone(),
-            &scene.map,
-        );
+        // map_svg::draw_map_svg_with_floors(
+        //     // TODO: Do this in a separate thread for speed?
+        //     floor_builder.sector_id_to_floor_vertices_with_indices.clone(),
+        //     &scene.map,
+        // );
         // });
 
         floor_builder.build_floor_meshes(device, &mut meshes);
@@ -595,11 +595,11 @@ impl FloorBuilder {
         all_sector_polygons: &Vec<SectorPolygon>,
     ) -> HashMap<usize, std::vec::Vec<usize>> {
         // REMINDER: This indexes by element index in all_sector_polygons, NOT sector ID.
-        let mut result: HashMap<usize, Vec<usize>> = HashMap::new();
+        let mut parent_to_contained_sector_polys: HashMap<usize, Vec<usize>> = HashMap::new();
 
         // Use geo crate to find containing sectors, to use with poly2tri crate which handles triangulation w/ holes.
         for (i_index, x) in all_sector_polygons.iter().enumerate() {
-            let entry = result.entry(i_index).or_insert(Vec::new());
+            let entry = parent_to_contained_sector_polys.entry(i_index).or_insert(Vec::new());
 
             for (j_index, y) in all_sector_polygons.iter().enumerate() {
                 if i_index == j_index {
@@ -609,14 +609,14 @@ impl FloorBuilder {
                 if x.polygon.contains(&y.polygon) {
                     entry.push(j_index);
 
-                    println!("Sector {} contains Sector {}", x.sector_id, y.sector_id);
+                    // println!("Sector {} contains Sector {}", x.sector_id, y.sector_id);
                 } else {
-                    println!("Sector {} does NOT contain Sector {}", x.sector_id, y.sector_id);
+                    // println!("Sector {} does NOT contain Sector {}", x.sector_id, y.sector_id);
                 }
             }
         }
 
-        return result;
+        return parent_to_contained_sector_polys;
     }
 
     fn sector_id_to_triangulated_polygons(

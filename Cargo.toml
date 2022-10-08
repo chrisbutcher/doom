@@ -2,13 +2,12 @@
 name = "doom"
 version = "0.1.0"
 authors = ["Chris Butcher <cbutcher@gmail.com>"]
-edition = "2021" # TODO: change to 2021 ?
+edition = "2021"
 resolver = "2"
 
 [lib]
 name = "doomlib"
 crate-type = ["cdylib", "rlib"]
-# path = "src/lib.rs"
 
 [dependencies]
 cfg-if = "1"
@@ -24,12 +23,12 @@ winit = "0.26"
 instant = "0.1"
 
 # Doom-specific
-# TODO: Update these crates?
+# TODO: Update these crates.
 svg = "0.9.0"
 regex = "1.4.3"
 png = "0.16.8"
 lyon = "0.17.5"
-geo = "0.17.1"
+geo = "0.23.0"
 poly2tri = "0.1.0"
 earcutr = "0.2.0"
 
