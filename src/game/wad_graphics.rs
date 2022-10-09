@@ -108,7 +108,7 @@ pub fn texture_to_gl_texture(scene: &scene::Scene, texture_name: &str) -> (image
     (image, (texture.width, texture.height))
 }
 
-pub fn picture_to_rgba_bytes(picture: &Picture, palette: &std::vec::Vec<PaletteColor>) -> Vec<u8> {
+pub fn picture_to_rgba_bytes(picture: &Picture, palette: &[PaletteColor]) -> Vec<u8> {
     let mut data = vec![0u8; picture.width as usize * picture.height as usize * 4];
     for (i, post) in picture.posts.iter().enumerate() {
         let mut y = 0;
@@ -155,7 +155,7 @@ pub fn picture_to_rgba_bytes(picture: &Picture, palette: &std::vec::Vec<PaletteC
     data
 }
 
-pub fn load_picture_from_wad(wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>, lump_name: &str) -> Picture {
+pub fn load_picture_from_wad(wad_file: &[u8], lumps: &[lumps::Lump], lump_name: &str) -> Picture {
     let picture_lump = lumps.iter().find(|&l| l.name == lump_name.to_uppercase()).unwrap();
 
     let lump_offset = picture_lump.filepos;
@@ -179,13 +179,14 @@ pub fn load_picture_from_wad(wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>, lump_
 
     let mut posts = Vec::new();
     let mut post_spans = Vec::new();
-    for i in 0..width as usize {
-        let mut filepos_with_offset = lump_offset + &column_array[i];
+
+    for item in column_array.iter().take(width as usize) {
+        let mut filepos_with_offset = lump_offset + item;
         let mut last_span_pixel_count = 0;
         let mut last_span_topdelta = 0;
         let mut finished_post = false;
 
-        while finished_post == false {
+        while !finished_post {
             let topdelta = wad_file[filepos_with_offset] as usize;
 
             let pixel_count = wad_file[filepos_with_offset + 1] as usize;
@@ -200,11 +201,11 @@ pub fn load_picture_from_wad(wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>, lump_
             }
 
             post_spans.push(PictureSpan {
-                topdelta: topdelta,
+                topdelta,
                 length: pixel_count as u8,
                 pixels: span_pixels.to_owned(),
-                last_span_pixel_count: last_span_pixel_count,
-                last_span_topdelta: last_span_topdelta,
+                last_span_pixel_count,
+                last_span_topdelta,
             });
 
             last_span_pixel_count = pixel_count;
@@ -232,16 +233,16 @@ pub fn load_picture_from_wad(wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>, lump_
     }
 
     Picture {
-        width: width,
-        height: height,
-        leftoffset: leftoffset,
-        topoffset: topoffset,
-        posts: posts,
+        width,
+        height,
+        leftoffset,
+        topoffset,
+        posts,
         lump_name: lump_name.to_string(),
     }
 }
 
-pub fn load_flat_from_wad(wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>, lump_name: &str) -> Flat {
+pub fn load_flat_from_wad(wad_file: &[u8], lumps: &[lumps::Lump], lump_name: &str) -> Flat {
     let flat_lump = lumps.iter().find(|&l| l.name == lump_name).unwrap();
 
     let mut pixels = Vec::with_capacity(4096);
@@ -251,10 +252,10 @@ pub fn load_flat_from_wad(wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>, lump_nam
         pixels.push(pixel);
     }
 
-    Flat { pixels: pixels }
+    Flat { pixels }
 }
 
-pub fn load_textures(wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>) -> Vec<WallTexture> {
+pub fn load_textures(wad_file: &[u8], lumps: &[lumps::Lump]) -> Vec<WallTexture> {
     let mut wall_textures = Vec::new();
 
     let texture_lumps: Vec<&lumps::Lump> = lumps
@@ -337,8 +338,8 @@ pub fn load_textures(wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>) -> Vec<WallTe
                         as usize;
 
                 patches.push(WallPatch {
-                    originx: originx,
-                    originy: originy,
+                    originx,
+                    originy,
                     patch_number: patch,
                 });
 
@@ -348,9 +349,9 @@ pub fn load_textures(wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>) -> Vec<WallTe
             wall_textures.push(WallTexture {
                 name: texture_name,
                 masked: masked != 0,
-                width: width,
-                height: height,
-                patches: patches,
+                width,
+                height,
+                patches,
             });
         }
     }
@@ -358,7 +359,7 @@ pub fn load_textures(wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>) -> Vec<WallTe
     wall_textures
 }
 
-pub fn load_patch_names(wad_file: &Vec<u8>, lumps: &Vec<lumps::Lump>) -> Vec<Patch> {
+pub fn load_patch_names(wad_file: &[u8], lumps: &[lumps::Lump]) -> Vec<Patch> {
     let mut patches = Vec::new();
 
     let pnames_lump = lumps.iter().find(|&l| l.name.starts_with("PNAMES")).unwrap();

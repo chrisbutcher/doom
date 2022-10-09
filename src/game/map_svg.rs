@@ -17,6 +17,12 @@ pub struct MapCenterer {
     pub upper_most_y: i16,
 }
 
+impl Default for MapCenterer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MapCenterer {
     pub fn new() -> MapCenterer {
         MapCenterer {
@@ -122,7 +128,7 @@ pub fn draw_map_svg_with_floors(
 
     let filename = format!(
         "{}{}{}{}.svg",
-        map.name.chars().nth(0).unwrap(),
+        map.name.chars().next().unwrap(),
         map.name.chars().nth(1).unwrap(),
         map.name.chars().nth(2).unwrap(),
         map.name.chars().nth(3).unwrap(),
@@ -173,7 +179,7 @@ pub fn draw_map_svg(map: &maps::Map) {
 
     let filename = format!(
         "{}{}{}{} (without floors).svg",
-        map.name.chars().nth(0).unwrap(),
+        map.name.chars().next().unwrap(),
         map.name.chars().nth(1).unwrap(),
         map.name.chars().nth(2).unwrap(),
         map.name.chars().nth(3).unwrap(),

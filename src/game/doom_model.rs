@@ -23,9 +23,7 @@ pub struct GeoLine {
 
 impl GeoLine {
     pub fn swap_from_and_to(&mut self) {
-        let temp_from = self.from;
-        self.from = self.to;
-        self.to = temp_from;
+        std::mem::swap(&mut self.from, &mut self.to);
     }
 }
 
@@ -83,33 +81,33 @@ impl Model {
 
         // NOTE: wgpu uses a flipped z axis coordinate system.
         vertices.push(ModelVertex {
-            position: [vertex_1.x as f32, wall_height_bottom as f32, -vertex_1.y as f32].into(),
-            tex_coords: [0.0, 1.0].into(),
-            normal: [0.0, 0.0, 1.0].into(),
+            position: [vertex_1.x as f32, wall_height_bottom as f32, -vertex_1.y as f32],
+            tex_coords: [0.0, 1.0],
+            normal: [0.0, 0.0, 1.0],
             // We'll calculate these later
-            tangent: [0.0; 3].into(),
-            bitangent: [0.0; 3].into(),
+            tangent: [0.0; 3],
+            bitangent: [0.0; 3],
         });
         vertices.push(ModelVertex {
-            position: [vertex_2.x as f32, wall_height_bottom as f32, -vertex_2.y as f32].into(),
-            tex_coords: [1.0, 1.0].into(),
-            normal: [0.0, 0.0, 1.0].into(),
-            tangent: [0.0; 3].into(),
-            bitangent: [0.0; 3].into(),
+            position: [vertex_2.x as f32, wall_height_bottom as f32, -vertex_2.y as f32],
+            tex_coords: [1.0, 1.0],
+            normal: [0.0, 0.0, 1.0],
+            tangent: [0.0; 3],
+            bitangent: [0.0; 3],
         });
         vertices.push(ModelVertex {
-            position: [vertex_1.x as f32, wall_height_top as f32, -vertex_1.y as f32].into(),
-            tex_coords: [0.0, 0.0].into(),
-            normal: [0.0, 0.0, 1.0].into(),
-            tangent: [0.0; 3].into(),
-            bitangent: [0.0; 3].into(),
+            position: [vertex_1.x as f32, wall_height_top as f32, -vertex_1.y as f32],
+            tex_coords: [0.0, 0.0],
+            normal: [0.0, 0.0, 1.0],
+            tangent: [0.0; 3],
+            bitangent: [0.0; 3],
         });
         vertices.push(ModelVertex {
-            position: [vertex_2.x as f32, wall_height_top as f32, -vertex_2.y as f32].into(),
-            tex_coords: [1.0, 0.0].into(),
-            normal: [0.0, 0.0, 1.0].into(),
-            tangent: [0.0; 3].into(),
-            bitangent: [0.0; 3].into(),
+            position: [vertex_2.x as f32, wall_height_top as f32, -vertex_2.y as f32],
+            tex_coords: [1.0, 0.0],
+            normal: [0.0, 0.0, 1.0],
+            tangent: [0.0; 3],
+            bitangent: [0.0; 3],
         });
 
         let indices = vec![0, 1, 2, 2, 1, 3];
@@ -159,13 +157,13 @@ impl Model {
         }
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(&format!("Vertex Buffer (TODO name)")),
+            label: Some("Vertex Buffer (TODO name)"),
             contents: bytemuck::cast_slice(&vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(&format!("Index Buffer (TODO name)")),
+            label: Some("Index Buffer (TODO name)"),
             contents: bytemuck::cast_slice(&indices),
             usage: wgpu::BufferUsages::INDEX,
         });
@@ -309,9 +307,8 @@ impl<'a> WallBuilder<'a> {
 
     pub fn load_diffuse_texture_by_name(self, texture_name: &str) -> Texture {
         let (doom_texture, (_width, _height)) = wad_graphics::texture_to_gl_texture(self.scene, texture_name);
-        let diffuse_texture = Texture::from_image(self.device, self.queue, &doom_texture, None, false).unwrap();
 
-        diffuse_texture
+        Texture::from_image(self.device, self.queue, &doom_texture, None, false).unwrap()
     }
 
     pub fn store_texture_as_material(
@@ -324,13 +321,13 @@ impl<'a> WallBuilder<'a> {
         let material_index = if texture_name_to_material_index.contains_key(texture_name) {
             *texture_name_to_material_index.get(texture_name).unwrap()
         } else {
-            let diffuse_texture = self.load_diffuse_texture_by_name(&texture_name);
+            let diffuse_texture = self.load_diffuse_texture_by_name(texture_name);
 
             materials.push(Material::new(
                 self.device,
-                &texture_name,
+                texture_name,
                 diffuse_texture,
-                normal_texture.clone(),
+                normal_texture,
                 self.layout,
             ));
 
@@ -406,7 +403,7 @@ impl<'a> WallBuilder<'a> {
                             self.build_wall_mesh(
                                 &texture_name,
                                 materials,
-                                normal_texture.clone(),
+                                normal_texture,
                                 texture_name_to_material_index,
                                 meshes,
                                 vertex_1,
@@ -436,12 +433,8 @@ impl<'a> WallBuilder<'a> {
         let (vertex_buffer, index_buffer) =
             Model::build_wall_vertices_indices(self.device, vertex_1, vertex_2, wall_height_bottom, wall_height_top);
 
-        let material_index = self.store_texture_as_material(
-            &texture_name,
-            materials,
-            normal_texture.clone(),
-            texture_name_to_material_index,
-        );
+        let material_index =
+            self.store_texture_as_material(texture_name, materials, normal_texture, texture_name_to_material_index);
 
         meshes.push(Mesh {
             name: String::from("Some wall"),
@@ -457,6 +450,12 @@ pub struct FloorBuilder {
     sector_id_to_geo_lines: HashMap<usize, Vec<GeoLine>>,
     sector_id_to_floor_and_ceiling_height: HashMap<usize, FloorAndCeilingHeight>,
     sector_id_to_floor_vertices_with_indices: HashMap<usize, (Vec<ModelVertex>, Vec<u32>)>,
+}
+
+impl Default for FloorBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FloorBuilder {
@@ -486,7 +485,7 @@ impl FloorBuilder {
                 x: end_vertex.x as f32,
                 y: end_vertex.y as f32,
             },
-            linedef_index: linedef_index,
+            linedef_index,
         });
     }
 
@@ -498,8 +497,8 @@ impl FloorBuilder {
         self.sector_id_to_floor_and_ceiling_height
             .entry(sector_index)
             .or_insert(FloorAndCeilingHeight {
-                floor_height: floor_height,
-                ceiling_height: ceiling_height,
+                floor_height,
+                ceiling_height,
             });
     }
 
@@ -509,7 +508,7 @@ impl FloorBuilder {
 
         sorted_sector_id_to_geo_lines.sort_by_key(|a| a.0);
 
-        return sorted_sector_id_to_geo_lines;
+        sorted_sector_id_to_geo_lines
     }
 
     fn sectors_with_ordered_geolines(&self) -> Vec<SectorPolygon> {
@@ -527,7 +526,7 @@ impl FloorBuilder {
             ordered_geo_lines.push(unordered_geo_lines_copy[0]);
             unordered_geo_lines_copy.remove(0);
 
-            while unordered_geo_lines_copy.len() != 0 {
+            while !unordered_geo_lines_copy.is_empty() {
                 let dupe = ordered_geo_lines.clone();
                 let last_ordered_line = dupe.last().unwrap();
 
@@ -555,7 +554,7 @@ impl FloorBuilder {
                     }
                 }
 
-                if found_next_line == false {
+                if !found_next_line {
                     // TODO: Need to handle slicing out inner sectors, as in section with
                     // "Two potential situations for non-contiguous sets of lines." in
                     // https://medium.com/@jmickle_/build-a-model-of-a-doom-level-7283addf009f
@@ -582,17 +581,17 @@ impl FloorBuilder {
 
             let sector_polygon = SectorPolygon {
                 sector_id: *sector_id,
-                polygon: polygon,
+                polygon,
             };
 
             result.push(sector_polygon);
         }
-        return result;
+        result
     }
 
     fn parent_polygons_indices_to_child_polygon_indices(
         &self,
-        all_sector_polygons: &Vec<SectorPolygon>,
+        all_sector_polygons: &[SectorPolygon],
     ) -> HashMap<usize, std::vec::Vec<usize>> {
         // REMINDER: This indexes by element index in all_sector_polygons, NOT sector ID.
         let mut parent_to_contained_sector_polys: HashMap<usize, Vec<usize>> = HashMap::new();
@@ -616,12 +615,12 @@ impl FloorBuilder {
             }
         }
 
-        return parent_to_contained_sector_polys;
+        parent_to_contained_sector_polys
     }
 
     fn sector_id_to_triangulated_polygons(
         &self,
-        all_sector_polygons: &Vec<SectorPolygon>,
+        all_sector_polygons: &[SectorPolygon],
         parent_polygons_indices_to_child_polygon_indices: HashMap<usize, std::vec::Vec<usize>>,
     ) -> HashMap<usize, (Vec<Vec<Vec<f32>>>, Vec<u32>)> {
         let mut sorted_parent_polygons_indices_to_child_polygon_indices: Vec<(&usize, &Vec<usize>)> =
@@ -706,7 +705,7 @@ impl FloorBuilder {
             );
         }
 
-        return result;
+        result
     }
 
     fn compute_sector_id_to_floor_vertices_with_indices(
@@ -736,12 +735,12 @@ impl FloorBuilder {
             for vertices_group in parent_vertices_groups {
                 for parent_vert in vertices_group {
                     let model_vertex = ModelVertex {
-                        position: [parent_vert[0], floor_height, -parent_vert[1] as f32].into(), // NOTE: wgpu uses a flipped z axis coordinate system.
-                        tex_coords: [0.0, 1.0].into(),
-                        normal: [0.0, 0.1, 0.0].into(),
+                        position: [parent_vert[0], floor_height, -parent_vert[1] as f32], // NOTE: wgpu uses a flipped z axis coordinate system.
+                        tex_coords: [0.0, 1.0],
+                        normal: [0.0, 0.1, 0.0],
                         // We'll calculate these later
-                        tangent: [0.0; 3].into(),
-                        bitangent: [0.0; 3].into(),
+                        tangent: [0.0; 3],
+                        bitangent: [0.0; 3],
                     };
                     verts.push(model_vertex);
                 }
@@ -751,7 +750,7 @@ impl FloorBuilder {
             let _entry = result.entry(sector_id).or_insert((verts, inds));
         }
 
-        return result;
+        result
     }
 
     // Handy article on this topic: https://medium.com/@jmickle_/build-a-model-of-a-doom-level-7283addf009f
@@ -821,7 +820,7 @@ impl FloorBuilder {
             }
 
             let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("Vertex Buffer 123")),
+                label: Some("Vertex Buffer 123"),
                 contents: bytemuck::cast_slice(&vertices),
                 usage: wgpu::BufferUsages::VERTEX,
             });
@@ -830,7 +829,7 @@ impl FloorBuilder {
             let indices_u8_slice: &[u8] = bytemuck::cast_slice(&indices);
 
             let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("Index Buffer 123")),
+                label: Some("Index Buffer 123"),
                 contents: indices_u8_slice,
                 usage: wgpu::BufferUsages::INDEX,
             });

@@ -29,12 +29,12 @@ impl Scene {
 
         Scene {
             map: current_map,
-            wad_file: wad_file,
-            textures: textures,
-            patch_names: patch_names,
-            lumps: lumps,
-            palette: palette,
-            colormap: colormap,
+            wad_file,
+            textures,
+            patch_names,
+            lumps,
+            palette,
+            colormap,
         }
     }
 }
