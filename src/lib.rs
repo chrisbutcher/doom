@@ -3,10 +3,11 @@ use std::iter;
 use cgmath::prelude::*;
 use std::rc::Rc;
 use wgpu::util::DeviceExt;
+use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::window::Window;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
-    window::Window,
 };
 
 #[cfg(target_arch = "wasm32")]
@@ -129,8 +130,9 @@ struct LightUniform {
     _padding2: u32,
 }
 
-struct State {
-    surface: wgpu::Surface,
+struct State<'a> {
+    window: &'a Window,
+    surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
@@ -174,12 +176,13 @@ fn create_render_pipeline(
         layout: Some(layout),
         vertex: wgpu::VertexState {
             module: &shader,
-            entry_point: "vs_main",
+            entry_point: Some("vs_main"),
             buffers: vertex_layouts,
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader,
-            entry_point: "fs_main",
+            entry_point: Some("fs_main"),
             targets: &[Some(wgpu::ColorTargetState {
                 format: color_format,
                 blend: Some(wgpu::BlendState {
@@ -188,6 +191,7 @@ fn create_render_pipeline(
                 }),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
@@ -216,17 +220,26 @@ fn create_render_pipeline(
         // If the pipeline will be used with a multiview render pass, this
         // indicates how many array layers the attachments will have.
         multiview: None,
+        cache: None,
     })
 }
 
-impl State {
-    async fn new(window: &Window, scene: Scene) -> Self {
+impl<'a> State<'a> {
+    async fn new(window: &'a Window, scene: Scene) -> State<'a> {
         let size = window.inner_size();
 
         // The instance is a handle to our GPU
         // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
-        let instance = wgpu::Instance::new(wgpu::Backends::all());
-        let surface = unsafe { instance.create_surface(window) };
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            #[cfg(not(target_arch = "wasm32"))]
+            backends: wgpu::Backends::PRIMARY,
+            #[cfg(target_arch = "wasm32")]
+            backends: wgpu::Backends::GL,
+            ..Default::default()
+        });
+
+        let surface = instance.create_surface(window).unwrap();
+
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
@@ -238,27 +251,43 @@ impl State {
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
-                    label: None,
-                    features: wgpu::Features::empty(),
+                    required_features: wgpu::Features::empty(),
                     // WebGL doesn't support all of wgpu's features, so if
-                    // we're building for the web we'll have to disable some.
-                    limits: if cfg!(target_arch = "wasm32") {
+                    // we're building for the web, we'll have to disable some.
+                    required_limits: if cfg!(target_arch = "wasm32") {
                         wgpu::Limits::downlevel_webgl2_defaults()
                     } else {
                         wgpu::Limits::default()
                     },
+                    label: None,
+                    memory_hints: Default::default(),
                 },
                 None, // Trace path
             )
             .await
             .unwrap();
 
+        let surface_caps = surface.get_capabilities(&adapter);
+        // Shader code in this tutorial assumes an sRGB surface texture. Using a
+        // different one will result in all the colors coming out darker. If you
+        // want to support non sRGB surfaces, you'll need to account for that
+        // when drawing to the frame.
+        let surface_format = surface_caps
+            .formats
+            .iter()
+            .find(|f| f.is_srgb())
+            .copied()
+            .unwrap_or(surface_caps.formats[0]);
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface.get_supported_formats(&adapter)[0],
+            format: surface_format,
             width: size.width,
             height: size.height,
-            present_mode: wgpu::PresentMode::Fifo,
+            present_mode: surface_caps.present_modes[0],
+            alpha_mode: surface_caps.alpha_modes[0],
+            view_formats: vec![],
+            desired_maximum_frame_latency: 2,
         };
 
         surface.configure(&device, &config);
@@ -423,10 +452,11 @@ impl State {
         };
 
         // let light_render_pipeline = {
-        //     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        //     let layout =
+        // device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         //         label: Some("Light Pipeline Layout"),
-        //         bind_group_layouts: &[&camera_bind_group_layout, &light_bind_group_layout],
-        //         push_constant_ranges: &[],
+        //         bind_group_layouts: &[&camera_bind_group_layout,
+        // &light_bind_group_layout],         push_constant_ranges: &[],
         //     });
         //     let shader = wgpu::ShaderModuleDescriptor {
         //         label: Some("Light Shader"),
@@ -461,6 +491,7 @@ impl State {
         };
 
         Self {
+            window,
             surface,
             device,
             queue,
@@ -491,6 +522,10 @@ impl State {
         }
     }
 
+    pub fn window(&self) -> &Window {
+        &self.window
+    }
+
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         // UPDATED!
         if new_size.width > 0 && new_size.height > 0 {
@@ -507,14 +542,14 @@ impl State {
     fn input(&mut self, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::KeyboardInput {
-                input:
-                    KeyboardInput {
-                        virtual_keycode: Some(key),
+                event:
+                    KeyEvent {
+                        physical_key: PhysicalKey::Code(key),
                         state,
                         ..
                     },
                 ..
-            } => self.camera_controller.process_keyboard(*key, *state, &self.camera),
+            } => self.camera_controller.process_keyboard(*key, *state),
             WindowEvent::MouseWheel { delta, .. } => {
                 self.camera_controller.process_scroll(delta);
                 true
@@ -567,24 +602,27 @@ impl State {
                             b: 0.3,
                             a: 1.0,
                         }),
-                        store: true,
+                        store: wgpu::StoreOp::Store,
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth_texture.view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
-                        store: true,
+                        store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
                 }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
             });
 
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
 
             // Not needed. Borrowed from wgpu tutorial.
             // render_pass.set_pipeline(&self.light_render_pipeline);
-            // render_pass.draw_light_model(&self.level_model, &self.camera_bind_group, &self.light_bind_group);
+            // render_pass.draw_light_model(&self.level_model, &self.camera_bind_group,
+            // &self.light_bind_group);
 
             render_pass.set_pipeline(&self.render_pipeline);
 
@@ -614,7 +652,7 @@ pub async fn run(scene: Scene) {
         }
     }
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
     let title = env!("CARGO_PKG_NAME");
     let window = winit::window::WindowBuilder::new()
         .with_title(title)
@@ -640,13 +678,11 @@ pub async fn run(scene: Scene) {
             .expect("Couldn't append canvas to document body.");
     }
 
-    let mut state = State::new(&window, scene).await; // NEW!
+    let mut state = State::new(&window, scene).await;
     let mut last_render_time = instant::Instant::now();
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Poll;
-        match event {
-            Event::MainEventsCleared => window.request_redraw(),
-            // NEW!
+    event_loop
+        .run(move |event, control_flow| {
+            match event {
             Event::DeviceEvent {
                 event: DeviceEvent::MouseMotion{ delta, },
                 .. // We're not using device_id currently
@@ -657,45 +693,44 @@ pub async fn run(scene: Scene) {
             Event::WindowEvent {
                 ref event,
                 window_id,
-            } if window_id == window.id() && !state.input(event) => {
+            } if window_id == state.window().id() && !state.input(event) => {
                 match event {
                     #[cfg(not(target_arch="wasm32"))]
                     WindowEvent::CloseRequested
                     | WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
+                        event:
+                            KeyEvent {
                                 state: ElementState::Pressed,
-                                virtual_keycode: Some(VirtualKeyCode::Escape),
+                                physical_key: PhysicalKey::Code(KeyCode::Escape),
                                 ..
                             },
                         ..
-                    } => *control_flow = ControlFlow::Exit,
+                    } => control_flow.exit(),
                     WindowEvent::Resized(physical_size) => {
                         state.resize(*physical_size);
                     }
-                    WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                        state.resize(**new_inner_size);
+                    // UPDATED!
+                    WindowEvent::RedrawRequested => {
+                        state.window().request_redraw();
+                        let now = instant::Instant::now();
+                        let dt = now - last_render_time;
+                        last_render_time = now;
+                        state.update(dt);
+                        match state.render() {
+                            Ok(_) => {}
+                            // Reconfigure the surface if it's lost or outdated
+                            Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => state.resize(state.size),
+                            // The system is out of memory, we should probably quit
+                            Err(wgpu::SurfaceError::OutOfMemory) => control_flow.exit(),
+                            // We're ignoring timeouts
+                            Err(wgpu::SurfaceError::Timeout) => log::warn!("Surface timeout"),
+                        }
                     }
                     _ => {}
                 }
             }
-            // UPDATED!
-            Event::RedrawRequested(window_id) if window_id == window.id() => {
-                let now = instant::Instant::now();
-                let dt = now - last_render_time;
-                last_render_time = now;
-                state.update(dt);
-                match state.render() {
-                    Ok(_) => {}
-                    // Reconfigure the surface if it's lost or outdated
-                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => state.resize(state.size),
-                    // The system is out of memory, we should probably quit
-                    Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
-                    // We're ignoring timeouts
-                    Err(wgpu::SurfaceError::Timeout) => log::warn!("Surface timeout"),
-                }
-            }
             _ => {}
         }
-    });
+        })
+        .unwrap();
 }

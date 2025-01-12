@@ -11,8 +11,9 @@ use std::path::Path;
 use std::rc::Rc;
 use wgpu::util::DeviceExt;
 
-// This file contains a bunch of Doom-specific types, impls on wgpu tutorial types to try to reduce
-// coupling/dependency on the changing wgpu crate and wgpu tutorial.
+// This file contains a bunch of Doom-specific types, impls on wgpu tutorial
+// types to try to reduce coupling/dependency on the changing wgpu crate and
+// wgpu tutorial.
 
 #[derive(Copy, Clone, Debug)]
 pub struct GeoLine {
@@ -62,13 +63,31 @@ impl Texture {
 }
 
 impl Model {
+    pub fn vector_length(p1: (i16, i16), p2: (i16, i16)) -> f32 {
+        let dx = (p2.0 - p1.0).abs() as f32;
+        let dy = (p2.1 - p1.1).abs() as f32;
+
+        (dx * dx + dy * dy).sqrt()
+    }
+
+    fn get_top_left_uv(quad_size: f32, texture_size: f32) -> [(f32, f32); 4] {
+        let uv_scale = quad_size / texture_size;
+        [
+            (0.0, 0.0),           // Top-Left
+            (uv_scale, 0.0),      // Top-Right
+            (0.0, uv_scale),      // Bottom-Left
+            (uv_scale, uv_scale), // Bottom-Right
+        ]
+    }
+
     pub fn build_wall_vertices_indices(
         device: &wgpu::Device,
         vertex_1: &maps::MapVertex,
         vertex_2: &maps::MapVertex,
         wall_height_bottom: f32,
         wall_height_top: f32,
-        // ) {
+        texture_width: i16,
+        texture_height: i16, // ) {
     ) -> (wgpu::Buffer, wgpu::Buffer) {
         //     // C *------* D
         //     //   | \  2 |
@@ -78,6 +97,12 @@ impl Model {
         //     // A *------* B
 
         let mut vertices = Vec::new();
+
+        let wall_length = Self::vector_length((vertex_1.x, vertex_1.y), (vertex_2.x, vertex_2.y));
+        let wall_height = wall_height_top - wall_height_bottom;
+
+        // TODO: Account for width as well as height
+        let uvs = get_top_left_uv();
 
         // NOTE: wgpu uses a flipped z axis coordinate system.
         vertices.push(ModelVertex {
@@ -305,10 +330,13 @@ impl<'a> WallBuilder<'a> {
         }
     }
 
-    pub fn load_diffuse_texture_by_name(self, texture_name: &str) -> Texture {
-        let (doom_texture, (_width, _height)) = wad_graphics::texture_to_gl_texture(self.scene, texture_name);
+    pub fn load_diffuse_texture_by_name(self, texture_name: &str) -> (Texture, (i16, i16)) {
+        let (doom_texture, (width, height)) = wad_graphics::texture_to_gl_texture(self.scene, texture_name);
 
-        Texture::from_image(self.device, self.queue, &doom_texture, None, false).unwrap()
+        (
+            Texture::from_image(self.device, self.queue, &doom_texture, None, false).unwrap(),
+            (width, height),
+        )
     }
 
     pub fn store_texture_as_material(
@@ -317,11 +345,11 @@ impl<'a> WallBuilder<'a> {
         materials: &mut Vec<Material>,
         normal_texture: Rc<Texture>,
         texture_name_to_material_index: &mut HashMap<String, usize>,
-    ) -> usize {
+    ) -> (usize, (i16, i16)) {
         let material_index = if texture_name_to_material_index.contains_key(texture_name) {
             *texture_name_to_material_index.get(texture_name).unwrap()
         } else {
-            let diffuse_texture = self.load_diffuse_texture_by_name(texture_name);
+            let (diffuse_texture, (width, height)) = self.load_diffuse_texture_by_name(texture_name);
 
             materials.push(Material::new(
                 self.device,
@@ -375,8 +403,8 @@ impl<'a> WallBuilder<'a> {
 
                 if let Some(_other_sidedef) = other_sidedef {
                     if let Some(other_sector) = other_sector {
-                        // Upper texture on portal. Down step from ceiling, between this higher ceiling sector and
-                        // connected sector with lower ceiling.
+                        // Upper texture on portal. Down step from ceiling, between this higher ceiling
+                        // sector and connected sector with lower ceiling.
                         if this_sidedef.name_of_upper_texture.is_some()
                             && this_sector.ceiling_height > other_sector.ceiling_height
                         {
@@ -394,8 +422,8 @@ impl<'a> WallBuilder<'a> {
                             );
                         }
 
-                        // Lower texture on portal. Up step from floor, between this lower floor sector and
-                        // connected sector with heigher floor.
+                        // Lower texture on portal. Up step from floor, between this lower floor sector
+                        // and connected sector with heigher floor.
                         if this_sidedef.name_of_lower_texture.is_some()
                             && this_sector.floor_height < other_sector.floor_height
                         {
@@ -430,11 +458,20 @@ impl<'a> WallBuilder<'a> {
         wall_height_bottom: f32,
         wall_height_top: f32,
     ) {
-        let (vertex_buffer, index_buffer) =
-            Model::build_wall_vertices_indices(self.device, vertex_1, vertex_2, wall_height_bottom, wall_height_top);
-
-        let material_index =
+        let (material_index, (texture_width, texture_height)) =
             self.store_texture_as_material(texture_name, materials, normal_texture, texture_name_to_material_index);
+
+        let material = &materials[material_index];
+
+        let (vertex_buffer, index_buffer) = Model::build_wall_vertices_indices(
+            self.device,
+            vertex_1,
+            vertex_2,
+            wall_height_bottom,
+            wall_height_top,
+            texture_width,
+            texture_height,
+        );
 
         meshes.push(Mesh {
             name: String::from("Some wall"),
@@ -490,9 +527,9 @@ impl FloorBuilder {
     }
 
     pub fn track_sector_floor_height(&mut self, sector_index: usize, floor_height: f32, ceiling_height: f32) {
-        if sector_index == 71 {
-            panic!("Tracked floor height for sector: {}", sector_index);
-        }
+        // if sector_index == 71 {
+        //     panic!("Tracked floor height for sector: {}", sector_index);
+        // }
 
         self.sector_id_to_floor_and_ceiling_height
             .entry(sector_index)
@@ -574,8 +611,9 @@ impl FloorBuilder {
 
             let line_string = LineString::from(polygon_linestring_tuples);
 
-            // Ordering matters, and we need to build sectors in order, and not rely on convex/concave hull.
-            // Specifically, `polygon.convex_hull()` & `polygon.concave_hull()` seem to draw incorrect polygon bounds,
+            // Ordering matters, and we need to build sectors in order, and not rely on
+            // convex/concave hull. Specifically, `polygon.convex_hull()` &
+            // `polygon.concave_hull()` seem to draw incorrect polygon bounds,
             // and ignore actual concavity of C-shaped sectors, for example.
             let polygon = Polygon::new(line_string, vec![]);
 
@@ -593,10 +631,12 @@ impl FloorBuilder {
         &self,
         all_sector_polygons: &[SectorPolygon],
     ) -> HashMap<usize, std::vec::Vec<usize>> {
-        // REMINDER: This indexes by element index in all_sector_polygons, NOT sector ID.
+        // REMINDER: This indexes by element index in all_sector_polygons, NOT sector
+        // ID.
         let mut parent_to_contained_sector_polys: HashMap<usize, Vec<usize>> = HashMap::new();
 
-        // Use geo crate to find containing sectors, to use with poly2tri crate which handles triangulation w/ holes.
+        // Use geo crate to find containing sectors, to use with poly2tri crate which
+        // handles triangulation w/ holes.
         for (i_index, x) in all_sector_polygons.iter().enumerate() {
             let entry = parent_to_contained_sector_polys.entry(i_index).or_insert(Vec::new());
 
@@ -608,9 +648,11 @@ impl FloorBuilder {
                 if x.polygon.contains(&y.polygon) {
                     entry.push(j_index);
 
-                    // println!("Sector {} contains Sector {}", x.sector_id, y.sector_id);
+                    // println!("Sector {} contains Sector {}", x.sector_id,
+                    // y.sector_id);
                 } else {
-                    // println!("Sector {} does NOT contain Sector {}", x.sector_id, y.sector_id);
+                    // println!("Sector {} does NOT contain Sector {}",
+                    // x.sector_id, y.sector_id);
                 }
             }
         }
@@ -631,7 +673,8 @@ impl FloorBuilder {
         let mut result: HashMap<usize, (Vec<Vec<Vec<f32>>>, Vec<u32>)> = HashMap::new();
 
         // Simply associating all child polygon array indices with parent array indices.
-        // Walking through all child polygons, and pushing all of them as interiors on parent polygons.
+        // Walking through all child polygons, and pushing all of them as interiors on
+        // parent polygons.
         for (parent_polygon_index, children_polygon_indices) in sorted_parent_polygons_indices_to_child_polygon_indices
         {
             let parent_polygon = &all_sector_polygons[*parent_polygon_index];
@@ -644,7 +687,8 @@ impl FloorBuilder {
             let p_points = parent_polygon.polygon.exterior().clone().into_points();
             let p_points_len = p_points.len();
 
-            // Exclude last point, since poly2tri library panics on duplicated points in a polygon
+            // Exclude last point, since poly2tri library panics on duplicated points in a
+            // polygon
             for point in p_points.iter().take(p_points_len - 1) {
                 parent_polygon_data.push(vec![point.x(), point.y()]);
             }
@@ -669,7 +713,8 @@ impl FloorBuilder {
                 let c_points = child_polygon.polygon.exterior().clone().into_points();
                 let c_points_len = c_points.len();
 
-                // Exclude last point, since poly2tri library panics on duplicated points in a polygon
+                // Exclude last point, since poly2tri library panics on duplicated points in a
+                // polygon
                 for point in c_points.iter().take(c_points_len - 1) {
                     child_polygon_for_hole_and_own_triangles.push(vec![point.x(), point.y()]);
                 }
@@ -682,6 +727,7 @@ impl FloorBuilder {
                 let (child_vertices, child_holes, child_dimensions) =
                     earcutr::flatten(&child_polygon_without_holes_data);
                 let child_triangles_indices = earcutr::earcut(&child_vertices, &child_holes, child_dimensions)
+                    .unwrap()
                     .iter()
                     .map(|i| *i as u32)
                     .collect();
@@ -695,6 +741,7 @@ impl FloorBuilder {
             println!("Attempting to triangulate parent sector {}", parent_polygon.sector_id);
             let (parent_vertices, parent_holes, parent_dimensions) = earcutr::flatten(&polygon_with_holes_data);
             let parent_triangles_indices = earcutr::earcut(&parent_vertices, &parent_holes, parent_dimensions)
+                .unwrap()
                 .iter()
                 .map(|i| *i as u32)
                 .collect();
@@ -735,7 +782,9 @@ impl FloorBuilder {
             for vertices_group in parent_vertices_groups {
                 for parent_vert in vertices_group {
                     let model_vertex = ModelVertex {
-                        position: [parent_vert[0], floor_height, -parent_vert[1] as f32], // NOTE: wgpu uses a flipped z axis coordinate system.
+                        position: [parent_vert[0], floor_height, -parent_vert[1] as f32], /* NOTE: wgpu uses a
+                                                                                           * flipped z axis
+                                                                                           * coordinate system. */
                         tex_coords: [0.0, 1.0],
                         normal: [0.0, 0.1, 0.0],
                         // We'll calculate these later
@@ -825,7 +874,8 @@ impl FloorBuilder {
                 usage: wgpu::BufferUsages::VERTEX,
             });
 
-            // NOTE! If indices are passed in as anything other than u32s, polygons will render, but will be broken.
+            // NOTE! If indices are passed in as anything other than u32s, polygons will
+            // render, but will be broken.
             let indices_u8_slice: &[u8] = bytemuck::cast_slice(&indices);
 
             let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

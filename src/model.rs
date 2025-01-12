@@ -1,6 +1,8 @@
 use std::ops::Range;
 use std::rc::Rc;
 
+use log::debug;
+
 use crate::texture;
 
 pub trait Vertex {
@@ -177,6 +179,10 @@ where
         camera_bind_group: &'b wgpu::BindGroup,
         light_bind_group: &'b wgpu::BindGroup,
     ) {
+        if mesh.index_buffer.size() == 0 {
+            return;
+        }
+
         self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
         self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         self.set_bind_group(0, &material.bind_group, &[]);
