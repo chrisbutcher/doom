@@ -101,13 +101,15 @@ impl Model {
         let wall_length = Self::vector_length((vertex_1.x, vertex_1.y), (vertex_2.x, vertex_2.y));
         let wall_height = wall_height_top - wall_height_bottom;
 
-        // TODO: Account for width as well as height
-        let uvs = get_top_left_uv();
+        let tex_u_scale = wall_length / texture_width as f32;
+        let tex_v_scale = wall_height / texture_height as f32;
+
+        // TODO: Deal with unpegged textures, inverting UVs accordingly.
 
         // NOTE: wgpu uses a flipped z axis coordinate system.
         vertices.push(ModelVertex {
             position: [vertex_1.x as f32, wall_height_bottom as f32, -vertex_1.y as f32],
-            tex_coords: [0.0, 1.0],
+            tex_coords: [0.0, tex_v_scale],
             normal: [0.0, 0.0, 1.0],
             // We'll calculate these later
             tangent: [0.0; 3],
@@ -115,7 +117,7 @@ impl Model {
         });
         vertices.push(ModelVertex {
             position: [vertex_2.x as f32, wall_height_bottom as f32, -vertex_2.y as f32],
-            tex_coords: [1.0, 1.0],
+            tex_coords: [tex_u_scale, tex_v_scale],
             normal: [0.0, 0.0, 1.0],
             tangent: [0.0; 3],
             bitangent: [0.0; 3],
@@ -129,7 +131,7 @@ impl Model {
         });
         vertices.push(ModelVertex {
             position: [vertex_2.x as f32, wall_height_top as f32, -vertex_2.y as f32],
-            tex_coords: [1.0, 0.0],
+            tex_coords: [tex_u_scale, 0.0],
             normal: [0.0, 0.0, 1.0],
             tangent: [0.0; 3],
             bitangent: [0.0; 3],
@@ -207,7 +209,7 @@ impl Model {
 
         let mut meshes = Vec::new();
         let mut materials = Vec::new();
-        let mut texture_name_to_material_index: HashMap<String, usize> = HashMap::new();
+        let mut texture_name_to_material_index: HashMap<String, (usize, (i16, i16))> = HashMap::new();
 
         let res_dir = std::path::Path::new(env!("OUT_DIR")).join("res");
         let normal_path = String::from("flat-normal.png"); // TODO: Try generating normal maps from diffuse?
@@ -344,9 +346,9 @@ impl<'a> WallBuilder<'a> {
         texture_name: &str,
         materials: &mut Vec<Material>,
         normal_texture: Rc<Texture>,
-        texture_name_to_material_index: &mut HashMap<String, usize>,
+        texture_name_to_material_index: &mut HashMap<String, (usize, (i16, i16))>,
     ) -> (usize, (i16, i16)) {
-        let material_index = if texture_name_to_material_index.contains_key(texture_name) {
+        let (material_index, (width, height)) = if texture_name_to_material_index.contains_key(texture_name) {
             *texture_name_to_material_index.get(texture_name).unwrap()
         } else {
             let (diffuse_texture, (width, height)) = self.load_diffuse_texture_by_name(texture_name);
@@ -361,12 +363,12 @@ impl<'a> WallBuilder<'a> {
 
             let stored_index = materials.len() - 1;
 
-            texture_name_to_material_index.insert(String::from(texture_name), stored_index);
+            texture_name_to_material_index.insert(String::from(texture_name), (stored_index, (width, height)));
 
-            stored_index
+            (stored_index, (width, height))
         };
 
-        material_index
+        (material_index, (width, height))
     }
 
     pub fn build_all_from_sidedefs(
@@ -377,7 +379,7 @@ impl<'a> WallBuilder<'a> {
         other_sector: Option<&maps::Sector>,
         materials: &mut Vec<Material>,
         normal_texture: Rc<Texture>,
-        texture_name_to_material_index: &mut HashMap<String, usize>,
+        texture_name_to_material_index: &mut HashMap<String, (usize, (i16, i16))>,
         meshes: &mut Vec<Mesh>,
         vertex_1: &maps::MapVertex,
         vertex_2: &maps::MapVertex,
@@ -451,7 +453,7 @@ impl<'a> WallBuilder<'a> {
         texture_name: &str,
         materials: &mut Vec<Material>,
         normal_texture: Rc<Texture>,
-        texture_name_to_material_index: &mut HashMap<String, usize>,
+        texture_name_to_material_index: &mut HashMap<String, (usize, (i16, i16))>,
         meshes: &mut Vec<Mesh>,
         vertex_1: &maps::MapVertex,
         vertex_2: &maps::MapVertex,
@@ -460,8 +462,6 @@ impl<'a> WallBuilder<'a> {
     ) {
         let (material_index, (texture_width, texture_height)) =
             self.store_texture_as_material(texture_name, materials, normal_texture, texture_name_to_material_index);
-
-        let material = &materials[material_index];
 
         let (vertex_buffer, index_buffer) = Model::build_wall_vertices_indices(
             self.device,
