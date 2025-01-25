@@ -46,6 +46,12 @@ pub struct FloorAndCeilingHeight {
     pub ceiling_height: f32,
 }
 
+#[derive(Debug, PartialEq, Hash, Eq)]
+enum FloorOrCeiling {
+    Floor,
+    Ceiling,
+}
+
 impl Texture {
     pub fn load<P: AsRef<Path>>(
         device: &wgpu::Device,
@@ -68,16 +74,6 @@ impl Model {
         let dy = (p2.1 - p1.1).abs() as f32;
 
         (dx * dx + dy * dy).sqrt()
-    }
-
-    fn get_top_left_uv(quad_size: f32, texture_size: f32) -> [(f32, f32); 4] {
-        let uv_scale = quad_size / texture_size;
-        [
-            (0.0, 0.0),           // Top-Left
-            (uv_scale, 0.0),      // Top-Right
-            (0.0, uv_scale),      // Bottom-Left
-            (uv_scale, uv_scale), // Bottom-Right
-        ]
     }
 
     pub fn build_wall_vertices_indices(
@@ -292,7 +288,7 @@ impl Model {
             );
         }
 
-        floor_builder.build_floors();
+        floor_builder.build_floors_and_ceilings();
 
         // TODO: Re-enable via an CLI arg.
         // let handler = thread::spawn(|| {
@@ -303,7 +299,7 @@ impl Model {
         // );
         // });
 
-        floor_builder.build_floor_meshes(device, &mut meshes);
+        floor_builder.build_floor_and_ceiling_meshes(device, &mut meshes);
 
         Ok(Self { meshes, materials })
     }
@@ -486,7 +482,8 @@ impl<'a> WallBuilder<'a> {
 pub struct FloorBuilder {
     sector_id_to_geo_lines: HashMap<usize, Vec<GeoLine>>,
     sector_id_to_floor_and_ceiling_height: HashMap<usize, FloorAndCeilingHeight>,
-    sector_id_to_floor_vertices_with_indices: HashMap<usize, (Vec<ModelVertex>, Vec<u32>)>,
+    sector_id_to_floor_and_ceiling_vertices_with_indices:
+        HashMap<(usize, FloorOrCeiling), (Vec<ModelVertex>, Vec<u32>)>,
 }
 
 impl Default for FloorBuilder {
@@ -500,7 +497,7 @@ impl FloorBuilder {
         FloorBuilder {
             sector_id_to_geo_lines: HashMap::new(),
             sector_id_to_floor_and_ceiling_height: HashMap::new(),
-            sector_id_to_floor_vertices_with_indices: HashMap::new(),
+            sector_id_to_floor_and_ceiling_vertices_with_indices: HashMap::new(),
         }
     }
 
@@ -696,8 +693,6 @@ impl FloorBuilder {
             polygon_with_holes_data.push(parent_polygon_data.clone());
 
             for child_polygon_index in children_polygon_indices {
-                // continue; // TEMPORARILY SHUTTING OFF CHILD POLY TRIANGULATION
-
                 let child_polygon = &all_sector_polygons[*child_polygon_index];
 
                 println!(
@@ -755,11 +750,11 @@ impl FloorBuilder {
         result
     }
 
-    fn compute_sector_id_to_floor_vertices_with_indices(
+    fn compute_sector_id_to_floor_and_ceiling_vertices_with_indices(
         &self,
         sector_id_to_triangulated_polygons: HashMap<usize, (Vec<Vec<Vec<f32>>>, Vec<u32>)>,
-    ) -> HashMap<usize, (std::vec::Vec<ModelVertex>, std::vec::Vec<u32>)> {
-        let mut result: HashMap<usize, (Vec<ModelVertex>, Vec<u32>)> = HashMap::new();
+    ) -> HashMap<(usize, FloorOrCeiling), (std::vec::Vec<ModelVertex>, std::vec::Vec<u32>)> {
+        let mut result: HashMap<(usize, FloorOrCeiling), (Vec<ModelVertex>, Vec<u32>)> = HashMap::new();
 
         for (sector_id, triangulated_polygon) in sector_id_to_triangulated_polygons {
             println!("Building ModelVertexes for sector ID: {}", sector_id);
@@ -767,36 +762,49 @@ impl FloorBuilder {
             let (parent_vertices_groups, parent_triangles_indices) = triangulated_polygon;
 
             let floor_height;
+            let ceiling_height;
             let sector_floor_and_ceiling_height = self.sector_id_to_floor_and_ceiling_height.get(&sector_id);
 
             if let Some(sector_floor_and_ceiling_height) = sector_floor_and_ceiling_height {
                 floor_height = sector_floor_and_ceiling_height.floor_height;
-                println!("Found floor height for sector {}: {}", sector_id, floor_height);
+                ceiling_height = sector_floor_and_ceiling_height.ceiling_height;
+                println!(
+                    "Found floor/ceiling height for sector: {}, floor: {}, ceiling: {}",
+                    sector_id, floor_height, ceiling_height
+                );
             } else {
                 floor_height = 0.0;
-                println!("Could not fetch floor height for sector {}", sector_id);
+                ceiling_height = 0.0;
+                println!("Could not fetch floor/ceiling height for sector {}", sector_id);
             }
 
-            let mut verts = vec![];
+            let heights = vec![
+                (FloorOrCeiling::Floor, floor_height),
+                (FloorOrCeiling::Ceiling, ceiling_height),
+            ];
 
-            for vertices_group in parent_vertices_groups {
-                for parent_vert in vertices_group {
-                    let model_vertex = ModelVertex {
-                        position: [parent_vert[0], floor_height, -parent_vert[1] as f32], /* NOTE: wgpu uses a
-                                                                                           * flipped z axis
-                                                                                           * coordinate system. */
-                        tex_coords: [0.0, 1.0],
-                        normal: [0.0, 0.1, 0.0],
-                        // We'll calculate these later
-                        tangent: [0.0; 3],
-                        bitangent: [0.0; 3],
-                    };
-                    verts.push(model_vertex);
+            for (height_enum, height) in heights {
+                let mut verts = vec![];
+
+                for vertices_group in parent_vertices_groups.clone() {
+                    for parent_vert in vertices_group {
+                        let model_vertex = ModelVertex {
+                            position: [parent_vert[0], height, -parent_vert[1] as f32], /* NOTE: wgpu uses a
+                                                                                         * flipped z axis
+                                                                                         * coordinate system. */
+                            tex_coords: [0.0, 1.0],
+                            normal: [0.0, 0.1, 0.0],
+                            // We'll calculate these later
+                            tangent: [0.0; 3],
+                            bitangent: [0.0; 3],
+                        };
+                        verts.push(model_vertex);
+                    }
                 }
-            }
 
-            let inds = parent_triangles_indices;
-            let _entry = result.entry(sector_id).or_insert((verts, inds));
+                let inds = parent_triangles_indices.clone();
+                let _entry = result.entry((sector_id, height_enum)).or_insert((verts, inds));
+            }
         }
 
         result
@@ -804,7 +812,7 @@ impl FloorBuilder {
 
     // Handy article on this topic: https://medium.com/@jmickle_/build-a-model-of-a-doom-level-7283addf009f
     // Rename to `build_floors_and_ceilings` ?
-    pub fn build_floors(&mut self) {
+    pub fn build_floors_and_ceilings(&mut self) {
         let all_sector_polygons = self.sectors_with_ordered_geolines();
 
         let parent_polygons_indices_to_child_polygon_indices =
@@ -813,16 +821,28 @@ impl FloorBuilder {
         let sector_id_to_triangulated_polygons = self
             .sector_id_to_triangulated_polygons(&all_sector_polygons, parent_polygons_indices_to_child_polygon_indices);
 
-        self.sector_id_to_floor_vertices_with_indices =
-            self.compute_sector_id_to_floor_vertices_with_indices(sector_id_to_triangulated_polygons);
+        self.sector_id_to_floor_and_ceiling_vertices_with_indices =
+            self.compute_sector_id_to_floor_and_ceiling_vertices_with_indices(sector_id_to_triangulated_polygons);
     }
 
-    pub fn build_floor_meshes(&mut self, device: &wgpu::Device, meshes: &mut Vec<Mesh>) {
-        for (sector_id, floor_vertices_with_indices) in &self.sector_id_to_floor_vertices_with_indices {
+    // TODO: Do a bunch of renaming for attrs/vars that only refer to floors, now
+    // that we build ceilings from (mostly) the same data.
+    pub fn build_floor_and_ceiling_meshes(&mut self, device: &wgpu::Device, meshes: &mut Vec<Mesh>) {
+        for ((sector_id, height_enum), floor_and_ceiling_vertices_with_indices) in
+            &self.sector_id_to_floor_and_ceiling_vertices_with_indices
+        {
             println!("Building mesh for sector: {}", sector_id);
 
-            let mut vertices = floor_vertices_with_indices.0.clone();
-            let indices = floor_vertices_with_indices.1.clone();
+            let mut vertices = floor_and_ceiling_vertices_with_indices.0.clone();
+
+            let indices = match height_enum {
+                FloorOrCeiling::Floor => floor_and_ceiling_vertices_with_indices.1.clone(),
+                FloorOrCeiling::Ceiling => {
+                    let mut ceiling_vertices_with_indices = floor_and_ceiling_vertices_with_indices.1.clone();
+                    ceiling_vertices_with_indices.reverse();
+                    ceiling_vertices_with_indices
+                }
+            };
 
             // Do a bunch of normals calculation magic:
             // https://sotrh.github.io/learn-wgpu/intermediate/tutorial11-normals/#the-tangent-and-the-bitangent
