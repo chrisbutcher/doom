@@ -552,74 +552,99 @@ impl FloorBuilder {
         let sorted_by_sector_id = self.sorted_sector_id_to_geo_lines();
 
         for (sector_id, unordered_geo_lines) in sorted_by_sector_id {
-            let mut ordered_geo_lines = Vec::new();
             let mut unordered_geo_lines_copy = Vec::with_capacity(unordered_geo_lines.len());
             unordered_geo_lines_copy.clone_from(unordered_geo_lines);
 
-            // Initialized ordered set with the first geo line
-            ordered_geo_lines.push(unordered_geo_lines_copy[0]);
-            unordered_geo_lines_copy.remove(0);
+            // Extract all closed rings from the unordered lines.
+            // A sector may have multiple disconnected polygon rings.
+            let mut all_rings: Vec<Vec<GeoLine>> = vec![];
 
             while !unordered_geo_lines_copy.is_empty() {
-                let dupe = ordered_geo_lines.clone();
-                let last_ordered_line = dupe.last().unwrap();
+                let mut current_ring = Vec::new();
 
-                let mut found_next_line = false;
+                // Start a new ring with the first available line
+                current_ring.push(unordered_geo_lines_copy.remove(0));
 
-                for i in 0..unordered_geo_lines_copy.len() {
-                    let mut candidate_next_line = unordered_geo_lines_copy[i];
+                // Try to complete this ring by finding connecting lines
+                loop {
+                    let last_line = current_ring.last().unwrap();
+                    let first_line = current_ring.first().unwrap();
 
-                    if candidate_next_line.from.x as i32 == last_ordered_line.to.x as i32
-                        && candidate_next_line.from.y as i32 == last_ordered_line.to.y as i32
+                    // Check if ring is closed (last vertex connects back to first vertex)
+                    if current_ring.len() >= 3
+                        && last_line.to.x as i32 == first_line.from.x as i32
+                        && last_line.to.y as i32 == first_line.from.y as i32
                     {
-                        found_next_line = true;
-                        ordered_geo_lines.push(candidate_next_line);
-                        unordered_geo_lines_copy.remove(i);
+                        // Ring is closed, save it
+                        all_rings.push(current_ring);
                         break;
-                    } else if candidate_next_line.to.x as i32 == last_ordered_line.to.x as i32
-                        && candidate_next_line.to.y as i32 == last_ordered_line.to.y as i32
-                    {
-                        candidate_next_line.swap_from_and_to();
+                    }
 
-                        found_next_line = true;
-                        ordered_geo_lines.push(candidate_next_line);
-                        unordered_geo_lines_copy.remove(i);
+                    // Find the next line that connects to the end of the current ring
+                    let mut found_next_line = false;
+
+                    for i in 0..unordered_geo_lines_copy.len() {
+                        let mut candidate_next_line = unordered_geo_lines_copy[i];
+
+                        if candidate_next_line.from.x as i32 == last_line.to.x as i32
+                            && candidate_next_line.from.y as i32 == last_line.to.y as i32
+                        {
+                            found_next_line = true;
+                            current_ring.push(candidate_next_line);
+                            unordered_geo_lines_copy.remove(i);
+                            break;
+                        } else if candidate_next_line.to.x as i32 == last_line.to.x as i32
+                            && candidate_next_line.to.y as i32 == last_line.to.y as i32
+                        {
+                            candidate_next_line.swap_from_and_to();
+                            found_next_line = true;
+                            current_ring.push(candidate_next_line);
+                            unordered_geo_lines_copy.remove(i);
+                            break;
+                        }
+                    }
+
+                    if !found_next_line {
+                        // Cannot find a connecting line. This ring may be incomplete.
+                        // Save it if it has enough vertices to form a polygon.
+                        println!(
+                            "Warning: Could not close ring for sector {}. Ring has {} lines, {} lines remaining.",
+                            sector_id,
+                            current_ring.len(),
+                            unordered_geo_lines_copy.len()
+                        );
+                        if current_ring.len() >= 3 {
+                            all_rings.push(current_ring);
+                        }
                         break;
                     }
                 }
-
-                if !found_next_line {
-                    // TODO: Need to handle slicing out inner sectors, as in section with
-                    // "Two potential situations for non-contiguous sets of lines." in
-                    // https://medium.com/@jmickle_/build-a-model-of-a-doom-level-7283addf009f
-                    println!("Cannot find next line leading to: {:?}", last_ordered_line);
-
-                    // Give up trying to find connections between non-line-connected sectors.
-                    break;
-                }
             }
 
-            let mut polygon_linestring_tuples: Vec<(f32, f32)> = ordered_geo_lines
-                .iter()
-                .flat_map(|line| vec![(line.from.x, line.from.y), (line.to.x, line.to.y)])
-                .collect();
+            // Create a SectorPolygon for each closed ring
+            for ring in all_rings {
+                let mut polygon_linestring_tuples: Vec<(f32, f32)> = ring
+                    .iter()
+                    .flat_map(|line| vec![(line.from.x, line.from.y), (line.to.x, line.to.y)])
+                    .collect();
 
-            polygon_linestring_tuples.dedup();
+                polygon_linestring_tuples.dedup();
 
-            let line_string = LineString::from(polygon_linestring_tuples);
+                let line_string = LineString::from(polygon_linestring_tuples);
 
-            // Ordering matters, and we need to build sectors in order, and not rely on
-            // convex/concave hull. Specifically, `polygon.convex_hull()` &
-            // `polygon.concave_hull()` seem to draw incorrect polygon bounds,
-            // and ignore actual concavity of C-shaped sectors, for example.
-            let polygon = Polygon::new(line_string, vec![]);
+                // Ordering matters, and we need to build sectors in order, and not rely on
+                // convex/concave hull. Specifically, `polygon.convex_hull()` &
+                // `polygon.concave_hull()` seem to draw incorrect polygon bounds,
+                // and ignore actual concavity of C-shaped sectors, for example.
+                let polygon = Polygon::new(line_string, vec![]);
 
-            let sector_polygon = SectorPolygon {
-                sector_id: *sector_id,
-                polygon,
-            };
+                let sector_polygon = SectorPolygon {
+                    sector_id: *sector_id,
+                    polygon,
+                };
 
-            result.push(sector_polygon);
+                result.push(sector_polygon);
+            }
         }
         result
     }
@@ -721,33 +746,65 @@ impl FloorBuilder {
 
                 let (child_vertices, child_holes, child_dimensions) =
                     earcutr::flatten(&child_polygon_without_holes_data);
-                let child_triangles_indices = earcutr::earcut(&child_vertices, &child_holes, child_dimensions)
+                let child_triangles_indices: Vec<u32> = earcutr::earcut(&child_vertices, &child_holes, child_dimensions)
                     .unwrap()
                     .iter()
                     .map(|i| *i as u32)
                     .collect();
 
-                result.insert(
+                // Merge with existing entry for this sector_id, or create new
+                Self::merge_triangulated_polygon(
+                    &mut result,
                     child_polygon.sector_id,
-                    (vec![child_polygon_for_hole_and_own_triangles], child_triangles_indices),
+                    vec![child_polygon_for_hole_and_own_triangles],
+                    child_triangles_indices,
                 );
             }
 
             println!("Attempting to triangulate parent sector {}", parent_polygon.sector_id);
             let (parent_vertices, parent_holes, parent_dimensions) = earcutr::flatten(&polygon_with_holes_data);
-            let parent_triangles_indices = earcutr::earcut(&parent_vertices, &parent_holes, parent_dimensions)
+            let parent_triangles_indices: Vec<u32> = earcutr::earcut(&parent_vertices, &parent_holes, parent_dimensions)
                 .unwrap()
                 .iter()
                 .map(|i| *i as u32)
                 .collect();
 
-            result.insert(
+            // Merge with existing entry for this sector_id, or create new
+            Self::merge_triangulated_polygon(
+                &mut result,
                 parent_polygon.sector_id,
-                (polygon_with_holes_data, parent_triangles_indices),
+                polygon_with_holes_data,
+                parent_triangles_indices,
             );
         }
 
         result
+    }
+
+    /// Merge triangulated polygon data into the result map.
+    /// If the sector_id already exists, append the new vertices and indices
+    /// (adjusting indices to account for existing vertex count).
+    fn merge_triangulated_polygon(
+        result: &mut HashMap<usize, (Vec<Vec<Vec<f32>>>, Vec<u32>)>,
+        sector_id: usize,
+        new_vertex_groups: Vec<Vec<Vec<f32>>>,
+        new_indices: Vec<u32>,
+    ) {
+        if let Some((existing_vertex_groups, existing_indices)) = result.get_mut(&sector_id) {
+            // Calculate the vertex offset (total vertices in existing groups)
+            let vertex_offset: u32 = existing_vertex_groups
+                .iter()
+                .map(|group| group.len() as u32)
+                .sum();
+
+            // Append the new vertex groups
+            existing_vertex_groups.extend(new_vertex_groups);
+
+            // Append the new indices, offset by the existing vertex count
+            existing_indices.extend(new_indices.iter().map(|i| i + vertex_offset));
+        } else {
+            result.insert(sector_id, (new_vertex_groups, new_indices));
+        }
     }
 
     fn compute_sector_id_to_floor_and_ceiling_vertices_with_indices(
