@@ -675,33 +675,60 @@ impl FloorBuilder {
         &self,
         all_sector_polygons: &[SectorPolygon],
     ) -> HashMap<usize, std::vec::Vec<usize>> {
-        // REMINDER: This indexes by element index in all_sector_polygons, NOT sector
-        // ID.
-        let mut parent_to_contained_sector_polys: HashMap<usize, Vec<usize>> = HashMap::new();
+        // REMINDER: This indexes by element index in all_sector_polygons, NOT sector ID.
+        //
+        // We need to find the DIRECT parent for each polygon - the smallest polygon
+        // that contains it. This prevents transitive containment issues where if
+        // A contains B and B contains C, we incorrectly add C as a hole to A.
 
-        // Use geo crate to find containing sectors, to use with poly2tri crate which
-        // handles triangulation w/ holes.
+        // First, find the direct parent for each polygon
+        let mut direct_parent: HashMap<usize, Option<usize>> = HashMap::new();
+
+        for (i_index, _) in all_sector_polygons.iter().enumerate() {
+            direct_parent.insert(i_index, None);
+        }
+
         for (i_index, x) in all_sector_polygons.iter().enumerate() {
-            let entry = parent_to_contained_sector_polys.entry(i_index).or_insert(Vec::new());
-
             for (j_index, y) in all_sector_polygons.iter().enumerate() {
                 if i_index == j_index {
                     continue;
                 }
 
+                // If x contains y, x might be y's direct parent
                 if x.polygon.contains(&y.polygon) {
-                    entry.push(j_index);
+                    let dominated_by_current_parent = if let Some(current_parent_idx) = direct_parent[&j_index] {
+                        let current_parent = &all_sector_polygons[current_parent_idx];
+                        // If x is contained within the current parent, x is smaller/more direct
+                        current_parent.polygon.contains(&x.polygon)
+                    } else {
+                        // No parent yet
+                        true
+                    };
 
-                    // println!("Sector {} contains Sector {}", x.sector_id,
-                    // y.sector_id);
-                } else {
-                    // println!("Sector {} does NOT contain Sector {}",
-                    // x.sector_id, y.sector_id);
+                    if dominated_by_current_parent {
+                        direct_parent.insert(j_index, Some(i_index));
+                    }
                 }
             }
         }
 
-        parent_to_contained_sector_polys
+        // Now build parent -> direct children mapping
+        let mut parent_to_direct_children: HashMap<usize, Vec<usize>> = HashMap::new();
+
+        for (i_index, _) in all_sector_polygons.iter().enumerate() {
+            parent_to_direct_children.insert(i_index, Vec::new());
+        }
+
+        for (child_index, parent_index_opt) in &direct_parent {
+            if let Some(parent_index) = parent_index_opt {
+                parent_to_direct_children
+                    .get_mut(parent_index)
+                    .unwrap()
+                    .push(*child_index);
+            }
+        }
+
+        parent_to_direct_children
     }
 
     fn sector_id_to_triangulated_polygons(
