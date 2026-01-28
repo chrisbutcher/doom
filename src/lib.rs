@@ -389,7 +389,7 @@ impl<'a> State<'a> {
         let level_model = model::Model::load_scene(&device, &queue, &texture_bind_group_layout, &scene).unwrap();
 
         let light_uniform = LightUniform {
-            position: [2.0, 2.0, 2.0],
+            position: [1000.0, 500.0, -1000.0], // Positioned for Doom-scale maps
             _padding: 0,
             color: [1.0, 1.0, 1.0],
             _padding2: 0,

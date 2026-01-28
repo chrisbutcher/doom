@@ -100,13 +100,26 @@ impl Model {
         let tex_u_scale = wall_length / texture_width as f32;
         let tex_v_scale = wall_height / texture_height as f32;
 
+        // Compute wall normal from wall direction.
+        // Wall direction in Doom coords: (dx, dy)
+        // In wgpu coords (Z flipped): wall direction is (dx, 0, -dy)
+        // Normal perpendicular to wall, pointing toward front face: (dy, 0, dx) normalized
+        let dx = (vertex_2.x - vertex_1.x) as f32;
+        let dy = (vertex_2.y - vertex_1.y) as f32;
+        let len = (dx * dx + dy * dy).sqrt();
+        let wall_normal = if len > 0.0 {
+            [dy / len, 0.0, dx / len]
+        } else {
+            [0.0, 0.0, 1.0] // fallback for degenerate walls
+        };
+
         // TODO: Deal with unpegged textures, inverting UVs accordingly.
 
         // NOTE: wgpu uses a flipped z axis coordinate system.
         vertices.push(ModelVertex {
             position: [vertex_1.x as f32, wall_height_bottom as f32, -vertex_1.y as f32],
             tex_coords: [0.0, tex_v_scale],
-            normal: [0.0, 0.0, 1.0],
+            normal: wall_normal,
             // We'll calculate these later
             tangent: [0.0; 3],
             bitangent: [0.0; 3],
@@ -114,21 +127,21 @@ impl Model {
         vertices.push(ModelVertex {
             position: [vertex_2.x as f32, wall_height_bottom as f32, -vertex_2.y as f32],
             tex_coords: [tex_u_scale, tex_v_scale],
-            normal: [0.0, 0.0, 1.0],
+            normal: wall_normal,
             tangent: [0.0; 3],
             bitangent: [0.0; 3],
         });
         vertices.push(ModelVertex {
             position: [vertex_1.x as f32, wall_height_top as f32, -vertex_1.y as f32],
             tex_coords: [0.0, 0.0],
-            normal: [0.0, 0.0, 1.0],
+            normal: wall_normal,
             tangent: [0.0; 3],
             bitangent: [0.0; 3],
         });
         vertices.push(ModelVertex {
             position: [vertex_2.x as f32, wall_height_top as f32, -vertex_2.y as f32],
             tex_coords: [tex_u_scale, 0.0],
-            normal: [0.0, 0.0, 1.0],
+            normal: wall_normal,
             tangent: [0.0; 3],
             bitangent: [0.0; 3],
         });
@@ -843,6 +856,12 @@ impl FloorBuilder {
             for (height_enum, height) in heights {
                 let mut verts = vec![];
 
+                // Floor normals point up (+Y), ceiling normals point down (-Y)
+                let normal = match height_enum {
+                    FloorOrCeiling::Floor => [0.0, 1.0, 0.0],
+                    FloorOrCeiling::Ceiling => [0.0, -1.0, 0.0],
+                };
+
                 for vertices_group in parent_vertices_groups.clone() {
                     for parent_vert in vertices_group {
                         let model_vertex = ModelVertex {
@@ -850,7 +869,7 @@ impl FloorBuilder {
                                                                                          * flipped z axis
                                                                                          * coordinate system. */
                             tex_coords: [0.0, 1.0],
-                            normal: [0.0, 0.1, 0.0],
+                            normal,
                             // We'll calculate these later
                             tangent: [0.0; 3],
                             bitangent: [0.0; 3],
@@ -931,9 +950,20 @@ impl FloorBuilder {
                 //     delta_pos2 = delta_uv2.x * T + delta_uv2.y * B
                 // Luckily, the place I found this equation provided
                 // the solution!
-                let r = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
-                let tangent = (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * r;
-                let bitangent = (delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * r;
+                let denom = delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x;
+
+                // Handle degenerate UV mapping (e.g., all vertices have same UV coords)
+                // by using default tangent/bitangent aligned with world axes
+                let (tangent, bitangent): (cgmath::Vector3<f32>, cgmath::Vector3<f32>) = if denom.abs() < 1e-6 {
+                    // For horizontal surfaces (floors/ceilings), use world-aligned tangent space
+                    (cgmath::Vector3::new(1.0, 0.0, 0.0), cgmath::Vector3::new(0.0, 0.0, 1.0))
+                } else {
+                    let r = 1.0 / denom;
+                    (
+                        (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * r,
+                        (delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * r,
+                    )
+                };
 
                 // We'll use the same tangent/bitangent for each vertex in the triangle
                 vertices[c[0] as usize].tangent = tangent.into();
