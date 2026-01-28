@@ -155,6 +155,20 @@ pub fn picture_to_rgba_bytes(picture: &Picture, palette: &[PaletteColor]) -> Vec
     data
 }
 
+/// Convert a Doom flat (64x64 floor/ceiling texture) to RGBA bytes
+pub fn flat_to_rgba_bytes(flat: &Flat, palette: &[PaletteColor]) -> Vec<u8> {
+    let mut data = vec![0u8; 64 * 64 * 4];
+    for (i, &pixel_index) in flat.pixels.iter().enumerate() {
+        let palette_color = &palette[pixel_index];
+        let index = i * 4;
+        data[index] = palette_color.r;
+        data[index + 1] = palette_color.g;
+        data[index + 2] = palette_color.b;
+        data[index + 3] = 0xFF; // alpha
+    }
+    data
+}
+
 pub fn load_picture_from_wad(wad_file: &[u8], lumps: &[lumps::Lump], lump_name: &str) -> Picture {
     let picture_lump = lumps.iter().find(|&l| l.name == lump_name.to_uppercase()).unwrap();
 

@@ -44,6 +44,8 @@ pub struct SectorPolygon {
 pub struct FloorAndCeilingHeight {
     pub floor_height: f32,
     pub ceiling_height: f32,
+    pub floor_texture: String,
+    pub ceiling_texture: String,
 }
 
 #[derive(Debug, PartialEq, Hash, Eq)]
@@ -242,6 +244,8 @@ impl Model {
                     front_sector.sector_index,
                     front_sector.floor_height as f32,
                     front_sector.ceiling_height as f32,
+                    &front_sector.name_of_floor_texture,
+                    &front_sector.name_of_ceiling_texture,
                 );
 
                 floor_builder.track_sector_boundaries(
@@ -303,16 +307,16 @@ impl Model {
 
         floor_builder.build_floors_and_ceilings();
 
-        // TODO: Re-enable via an CLI arg.
-        // let handler = thread::spawn(|| {
-        // map_svg::draw_map_svg_with_floors(
-        //     // TODO: Do this in a separate thread for speed?
-        //     floor_builder.sector_id_to_floor_vertices_with_indices.clone(),
-        //     &scene.map,
-        // );
-        // });
-
-        floor_builder.build_floor_and_ceiling_meshes(device, &mut meshes);
+        floor_builder.build_floor_and_ceiling_meshes(
+            device,
+            queue,
+            layout,
+            scene,
+            &mut meshes,
+            &mut materials,
+            &mut texture_name_to_material_index,
+            normal_texture,
+        );
 
         Ok(Self { meshes, materials })
     }
@@ -536,16 +540,21 @@ impl FloorBuilder {
         });
     }
 
-    pub fn track_sector_floor_height(&mut self, sector_index: usize, floor_height: f32, ceiling_height: f32) {
-        // if sector_index == 71 {
-        //     panic!("Tracked floor height for sector: {}", sector_index);
-        // }
-
+    pub fn track_sector_floor_height(
+        &mut self,
+        sector_index: usize,
+        floor_height: f32,
+        ceiling_height: f32,
+        floor_texture: &str,
+        ceiling_texture: &str,
+    ) {
         self.sector_id_to_floor_and_ceiling_height
             .entry(sector_index)
             .or_insert(FloorAndCeilingHeight {
                 floor_height,
                 ceiling_height,
+                floor_texture: floor_texture.to_string(),
+                ceiling_texture: ceiling_texture.to_string(),
             });
     }
 
@@ -864,11 +873,14 @@ impl FloorBuilder {
 
                 for vertices_group in parent_vertices_groups.clone() {
                     for parent_vert in vertices_group {
+                        // Doom flats are 64x64 and tile based on world coordinates
+                        let tex_coords = [parent_vert[0] / 64.0, parent_vert[1] / 64.0];
+
                         let model_vertex = ModelVertex {
                             position: [parent_vert[0], height, -parent_vert[1] as f32], /* NOTE: wgpu uses a
                                                                                          * flipped z axis
                                                                                          * coordinate system. */
-                            tex_coords: [0.0, 1.0],
+                            tex_coords,
                             normal,
                             // We'll calculate these later
                             tangent: [0.0; 3],
@@ -901,9 +913,17 @@ impl FloorBuilder {
             self.compute_sector_id_to_floor_and_ceiling_vertices_with_indices(sector_id_to_triangulated_polygons);
     }
 
-    // TODO: Do a bunch of renaming for attrs/vars that only refer to floors, now
-    // that we build ceilings from (mostly) the same data.
-    pub fn build_floor_and_ceiling_meshes(&mut self, device: &wgpu::Device, meshes: &mut Vec<Mesh>) {
+    pub fn build_floor_and_ceiling_meshes(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        layout: &wgpu::BindGroupLayout,
+        scene: &Scene,
+        meshes: &mut Vec<Mesh>,
+        materials: &mut Vec<Material>,
+        texture_name_to_material_index: &mut HashMap<String, (usize, (i16, i16))>,
+        normal_texture: Rc<Texture>,
+    ) {
         for ((sector_id, height_enum), floor_and_ceiling_vertices_with_indices) in
             &self.sector_id_to_floor_and_ceiling_vertices_with_indices
         {
@@ -920,8 +940,29 @@ impl FloorBuilder {
                 }
             };
 
-            // Do a bunch of normals calculation magic:
-            // https://sotrh.github.io/learn-wgpu/intermediate/tutorial11-normals/#the-tangent-and-the-bitangent
+            // Get the texture name for this floor/ceiling
+            let texture_name = if let Some(sector_data) = self.sector_id_to_floor_and_ceiling_height.get(sector_id) {
+                match height_enum {
+                    FloorOrCeiling::Floor => sector_data.floor_texture.clone(),
+                    FloorOrCeiling::Ceiling => sector_data.ceiling_texture.clone(),
+                }
+            } else {
+                String::from("FLOOR0_1") // fallback texture
+            };
+
+            // Load flat texture and get/create material index
+            let material_index = self.get_or_create_flat_material(
+                &texture_name,
+                device,
+                queue,
+                layout,
+                scene,
+                materials,
+                texture_name_to_material_index,
+                normal_texture.clone(),
+            );
+
+            // Calculate tangent/bitangent for normal mapping
             for c in indices.chunks(3) {
                 let v0 = vertices[c[0] as usize];
                 let v1 = vertices[c[1] as usize];
@@ -935,27 +976,14 @@ impl FloorBuilder {
                 let uv1: cgmath::Vector2<_> = v1.tex_coords.into();
                 let uv2: cgmath::Vector2<_> = v2.tex_coords.into();
 
-                // Calculate the edges of the triangle
                 let delta_pos1 = pos1 - pos0;
                 let delta_pos2 = pos2 - pos0;
-
-                // This will give us a direction to calculate the
-                // tangent and bitangent
                 let delta_uv1 = uv1 - uv0;
                 let delta_uv2 = uv2 - uv0;
 
-                // Solving the following system of equations will
-                // give us the tangent and bitangent.
-                //     delta_pos1 = delta_uv1.x * T + delta_u.y * B
-                //     delta_pos2 = delta_uv2.x * T + delta_uv2.y * B
-                // Luckily, the place I found this equation provided
-                // the solution!
                 let denom = delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x;
 
-                // Handle degenerate UV mapping (e.g., all vertices have same UV coords)
-                // by using default tangent/bitangent aligned with world axes
                 let (tangent, bitangent): (cgmath::Vector3<f32>, cgmath::Vector3<f32>) = if denom.abs() < 1e-6 {
-                    // For horizontal surfaces (floors/ceilings), use world-aligned tangent space
                     (cgmath::Vector3::new(1.0, 0.0, 0.0), cgmath::Vector3::new(0.0, 0.0, 1.0))
                 } else {
                     let r = 1.0 / denom;
@@ -965,7 +993,6 @@ impl FloorBuilder {
                     )
                 };
 
-                // We'll use the same tangent/bitangent for each vertex in the triangle
                 vertices[c[0] as usize].tangent = tangent.into();
                 vertices[c[1] as usize].tangent = tangent.into();
                 vertices[c[2] as usize].tangent = tangent.into();
@@ -976,28 +1003,111 @@ impl FloorBuilder {
             }
 
             let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer 123"),
+                label: Some(&format!("Floor/Ceiling Vertex Buffer sector {}", sector_id)),
                 contents: bytemuck::cast_slice(&vertices),
                 usage: wgpu::BufferUsages::VERTEX,
             });
 
-            // NOTE! If indices are passed in as anything other than u32s, polygons will
-            // render, but will be broken.
             let indices_u8_slice: &[u8] = bytemuck::cast_slice(&indices);
 
             let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Index Buffer 123"),
+                label: Some(&format!("Floor/Ceiling Index Buffer sector {}", sector_id)),
                 contents: indices_u8_slice,
                 usage: wgpu::BufferUsages::INDEX,
             });
 
             meshes.push(Mesh {
-                name: String::from("Foo"),
+                name: format!("Sector {} {:?}", sector_id, height_enum),
                 vertex_buffer,
                 index_buffer,
                 num_elements: indices.len() as u32,
-                material: 0, // TODO
+                material: material_index,
             });
         }
+    }
+
+    fn get_or_create_flat_material(
+        &self,
+        texture_name: &str,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        layout: &wgpu::BindGroupLayout,
+        scene: &Scene,
+        materials: &mut Vec<Material>,
+        texture_name_to_material_index: &mut HashMap<String, (usize, (i16, i16))>,
+        normal_texture: Rc<Texture>,
+    ) -> usize {
+        // Check if we already have this texture loaded
+        if let Some((material_index, _)) = texture_name_to_material_index.get(texture_name) {
+            return *material_index;
+        }
+
+        // Load the flat from WAD
+        let flat = wad_graphics::load_flat_from_wad(&scene.wad_file, &scene.lumps, texture_name);
+        let rgba_data = wad_graphics::flat_to_rgba_bytes(&flat, &scene.palette);
+
+        // Create texture from RGBA data (flats are always 64x64)
+        let texture_size = wgpu::Extent3d {
+            width: 64,
+            height: 64,
+            depth_or_array_layers: 1,
+        };
+
+        let wgpu_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(texture_name),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &wgpu_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &rgba_data,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(64 * 4),
+                rows_per_image: Some(64),
+            },
+            texture_size,
+        );
+
+        let view = wgpu_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        let diffuse_texture = Texture {
+            texture: wgpu_texture,
+            view,
+            sampler,
+        };
+
+        materials.push(Material::new(
+            device,
+            texture_name,
+            diffuse_texture,
+            normal_texture,
+            layout,
+        ));
+
+        let material_index = materials.len() - 1;
+        texture_name_to_material_index.insert(texture_name.to_string(), (material_index, (64, 64)));
+
+        material_index
     }
 }
