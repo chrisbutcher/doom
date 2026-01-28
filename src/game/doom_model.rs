@@ -7,7 +7,7 @@ use anyhow::*;
 use geo::algorithm::area::Area;
 use geo::algorithm::centroid::Centroid;
 use geo::prelude::Contains;
-use geo::{LineString, Polygon};
+use geo::{LineString, Point, Polygon};
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
@@ -40,6 +40,71 @@ pub struct GeoVertex {
 pub struct SectorPolygon {
     pub sector_id: usize,
     pub polygon: Polygon<f32>,
+}
+
+/// Spatial index for querying floor/ceiling heights at any (x, z) position
+pub struct SectorSpatialIndex {
+    /// Sector polygons for point-in-polygon queries
+    sector_polygons: Vec<SectorPolygon>,
+    /// Floor heights by sector ID
+    sector_floor_heights: HashMap<usize, f32>,
+    /// Ceiling heights by sector ID
+    sector_ceiling_heights: HashMap<usize, f32>,
+}
+
+impl SectorSpatialIndex {
+    /// Query the floor height at a horizontal position (x, z) in wgpu coordinates.
+    /// Returns None if the position is outside all sectors.
+    pub fn get_floor_height_at(&self, x: f32, z: f32) -> Option<f32> {
+        // Doom coordinates: (x, y) horizontal, wgpu: (x, y=height, z)
+        // wgpu z is negated from Doom y, so convert back: doom_y = -z
+        let doom_x = x;
+        let doom_y = -z;
+        let point = Point::new(doom_x, doom_y);
+
+        // Find the smallest sector containing this point (most specific)
+        let mut best_height: Option<f32> = None;
+        let mut best_area: Option<f32> = None;
+
+        for sector_polygon in &self.sector_polygons {
+            if sector_polygon.polygon.contains(&point) {
+                if let Some(&floor_height) = self.sector_floor_heights.get(&sector_polygon.sector_id) {
+                    let area = sector_polygon.polygon.unsigned_area() as f32;
+                    // Pick the smallest containing sector (most specific)
+                    if best_area.is_none() || area < best_area.unwrap() {
+                        best_height = Some(floor_height);
+                        best_area = Some(area);
+                    }
+                }
+            }
+        }
+
+        best_height
+    }
+
+    /// Query the ceiling height at a horizontal position (x, z) in wgpu coordinates.
+    pub fn get_ceiling_height_at(&self, x: f32, z: f32) -> Option<f32> {
+        let doom_x = x;
+        let doom_y = -z;
+        let point = Point::new(doom_x, doom_y);
+
+        let mut best_height: Option<f32> = None;
+        let mut best_area: Option<f32> = None;
+
+        for sector_polygon in &self.sector_polygons {
+            if sector_polygon.polygon.contains(&point) {
+                if let Some(&ceiling_height) = self.sector_ceiling_heights.get(&sector_polygon.sector_id) {
+                    let area = sector_polygon.polygon.unsigned_area() as f32;
+                    if best_area.is_none() || area < best_area.unwrap() {
+                        best_height = Some(ceiling_height);
+                        best_area = Some(area);
+                    }
+                }
+            }
+        }
+
+        best_height
+    }
 }
 
 #[derive(Debug)]
@@ -216,7 +281,7 @@ impl Model {
         queue: &wgpu::Queue,
         layout: &wgpu::BindGroupLayout,
         scene: &Scene,
-    ) -> Result<Self> {
+    ) -> Result<(Self, SectorSpatialIndex)> {
         let mut wall_builder = WallBuilder::new(device, queue, layout, scene);
         let mut floor_builder = FloorBuilder::new();
 
@@ -309,6 +374,9 @@ impl Model {
 
         floor_builder.build_floors_and_ceilings();
 
+        // Build the spatial index before consuming floor_builder data
+        let spatial_index = floor_builder.build_spatial_index();
+
         floor_builder.build_floor_and_ceiling_meshes(
             device,
             queue,
@@ -320,7 +388,7 @@ impl Model {
             normal_texture,
         );
 
-        Ok(Self { meshes, materials })
+        Ok((Self { meshes, materials }, spatial_index))
     }
 }
 
@@ -558,6 +626,26 @@ impl FloorBuilder {
                 floor_texture: floor_texture.to_string(),
                 ceiling_texture: ceiling_texture.to_string(),
             });
+    }
+
+    /// Build a spatial index for querying floor/ceiling heights at any position.
+    /// Call this after all sector data has been tracked.
+    pub fn build_spatial_index(&self) -> SectorSpatialIndex {
+        let sector_polygons = self.sectors_with_ordered_geolines();
+
+        let mut sector_floor_heights = HashMap::new();
+        let mut sector_ceiling_heights = HashMap::new();
+
+        for (sector_id, heights) in &self.sector_id_to_floor_and_ceiling_height {
+            sector_floor_heights.insert(*sector_id, heights.floor_height);
+            sector_ceiling_heights.insert(*sector_id, heights.ceiling_height);
+        }
+
+        SectorSpatialIndex {
+            sector_polygons,
+            sector_floor_heights,
+            sector_ceiling_heights,
+        }
     }
 
     fn sorted_sector_id_to_geo_lines(&self) -> Vec<(&usize, &std::vec::Vec<GeoLine>)> {

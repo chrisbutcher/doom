@@ -60,6 +60,22 @@ impl Projection {
         }
     }
 
+    /// Create a projection with horizontal FOV (like Doom uses).
+    /// Doom's original FOV was 90 degrees horizontal.
+    pub fn new_horizontal_fov<F: Into<Rad<f32>>>(width: u32, height: u32, fovx: F, znear: f32, zfar: f32) -> Self {
+        let aspect = width as f32 / height as f32;
+        let fovx_rad: Rad<f32> = fovx.into();
+        // Convert horizontal FOV to vertical FOV:
+        // tan(fovy/2) = tan(fovx/2) / aspect
+        let fovy = Rad(2.0 * ((fovx_rad.0 / 2.0).tan() / aspect).atan());
+        Self {
+            aspect,
+            fovy,
+            znear,
+            zfar,
+        }
+    }
+
     pub fn resize(&mut self, width: u32, height: u32) {
         self.aspect = width as f32 / height as f32;
     }
@@ -82,6 +98,8 @@ pub struct CameraController {
     scroll: f32,
     speed: f32,
     sensitivity: f32,
+    /// When true, camera Y is anchored to floor height + eye offset
+    pub anchored_to_floor: bool,
 }
 
 impl CameraController {
@@ -98,6 +116,7 @@ impl CameraController {
             scroll: 0.0,
             speed,
             sensitivity,
+            anchored_to_floor: true, // Start anchored to floor by default
         }
     }
 
@@ -128,6 +147,17 @@ impl CameraController {
                 self.amount_down = amount;
                 true
             }
+            KeyCode::KeyF => {
+                // Toggle floor anchoring on key press (not release)
+                if state == ElementState::Pressed {
+                    self.anchored_to_floor = !self.anchored_to_floor;
+                    println!(
+                        "Floor anchoring: {}",
+                        if self.anchored_to_floor { "ON" } else { "OFF (free fly)" }
+                    );
+                }
+                true
+            }
             _ => false,
         }
     }
@@ -148,24 +178,31 @@ impl CameraController {
     pub fn update_camera(&mut self, camera: &mut Camera, dt: Duration) {
         let dt = dt.as_secs_f32();
 
-        // Move forward/backward and left/right
         let (yaw_sin, yaw_cos) = camera.yaw.0.sin_cos();
-        let forward = Vector3::new(yaw_cos, 0.0, yaw_sin).normalize();
-        let right = Vector3::new(-yaw_sin, 0.0, yaw_cos).normalize();
-        camera.position += forward * (self.amount_forward - self.amount_backward) * self.speed * dt;
-        camera.position += right * (self.amount_right - self.amount_left) * self.speed * dt;
-
-        // Move in/out (aka. "zoom")
-        // Note: this isn't an actual zoom. The camera's position
-        // changes when zooming. I've added this to make it easier
-        // to get closer to an object you want to focus on.
         let (pitch_sin, pitch_cos) = camera.pitch.0.sin_cos();
+
+        // Move forward/backward and left/right
+        // When anchored to floor: horizontal movement only (ignore pitch)
+        // When free-flying: move in the direction you're looking (includes pitch)
+        if self.anchored_to_floor {
+            let forward = Vector3::new(yaw_cos, 0.0, yaw_sin).normalize();
+            let right = Vector3::new(-yaw_sin, 0.0, yaw_cos).normalize();
+            camera.position += forward * (self.amount_forward - self.amount_backward) * self.speed * dt;
+            camera.position += right * (self.amount_right - self.amount_left) * self.speed * dt;
+        } else {
+            // Free-fly: forward/backward follows the look direction (pitch + yaw)
+            let forward_3d = Vector3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalize();
+            let right = Vector3::new(-yaw_sin, 0.0, yaw_cos).normalize();
+            camera.position += forward_3d * (self.amount_forward - self.amount_backward) * self.speed * dt;
+            camera.position += right * (self.amount_right - self.amount_left) * self.speed * dt;
+        }
+
+        // Scroll also follows look direction
         let scrollward = Vector3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalize();
         camera.position += scrollward * self.scroll * self.speed * self.sensitivity * dt;
         self.scroll = 0.0;
 
-        // Move up/down. Since we don't use roll, we can just
-        // modify the y coordinate directly.
+        // Move up/down (only effective when anchored, since free-fly uses pitch for vertical)
         camera.position.y += (self.amount_up - self.amount_down) * self.speed * dt;
 
         // Rotate

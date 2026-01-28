@@ -19,6 +19,7 @@ mod model;
 mod resources;
 mod texture;
 
+use game::doom_model::SectorSpatialIndex;
 use game::scene::Scene;
 use model::{DrawModel, Vertex};
 
@@ -159,6 +160,7 @@ struct State<'a> {
     // Doom-specific:
     _scene: Scene,
     level_model: model::Model,
+    sector_spatial_index: SectorSpatialIndex,
 }
 
 fn create_render_pipeline(
@@ -334,7 +336,9 @@ impl<'a> State<'a> {
         // UPDATED!
         // Doom-specific
         let camera = camera::Camera::new((1073.0, 50.0, 3635.0), cgmath::Deg(-90.0), cgmath::Deg(0.0));
-        let projection = camera::Projection::new(config.width, config.height, cgmath::Deg(90.0), 0.1, 100000.0);
+        // Doom uses 90-degree horizontal FOV
+        let projection =
+            camera::Projection::new_horizontal_fov(config.width, config.height, cgmath::Deg(90.0), 0.1, 100000.0);
         let camera_controller = camera::CameraController::new(400.0, 4.4);
 
         let mut camera_uniform = CameraUniform::new();
@@ -386,7 +390,8 @@ impl<'a> State<'a> {
             .unwrap();
 
         // Doom-specific
-        let level_model = model::Model::load_scene(&device, &queue, &texture_bind_group_layout, &scene).unwrap();
+        let (level_model, sector_spatial_index) =
+            model::Model::load_scene(&device, &queue, &texture_bind_group_layout, &scene).unwrap();
 
         let light_uniform = LightUniform {
             position: [1000.0, 500.0, -1000.0], // Positioned for Doom-scale maps
@@ -519,6 +524,7 @@ impl<'a> State<'a> {
             // Doom-specific:
             _scene: scene,
             level_model,
+            sector_spatial_index,
         }
     }
 
@@ -569,6 +575,19 @@ impl<'a> State<'a> {
     fn update(&mut self, dt: std::time::Duration) {
         // UPDATED!
         self.camera_controller.update_camera(&mut self.camera, dt);
+
+        // Anchor camera to floor if enabled
+        if self.camera_controller.anchored_to_floor {
+            if let Some(floor_height) = self.sector_spatial_index.get_floor_height_at(
+                self.camera.position.x,
+                self.camera.position.z,
+            ) {
+                // Doom player eye height is typically ~41 units above floor
+                const EYE_HEIGHT: f32 = 41.0;
+                self.camera.position.y = floor_height + EYE_HEIGHT;
+            }
+        }
+
         self.camera_uniform.update_view_proj(&self.camera, &self.projection);
         self.queue
             .write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
