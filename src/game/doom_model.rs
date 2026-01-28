@@ -4,6 +4,8 @@ use crate::game::wad_graphics;
 use crate::model::*;
 use crate::texture::Texture;
 use anyhow::*;
+use geo::algorithm::area::Area;
+use geo::algorithm::centroid::Centroid;
 use geo::prelude::Contains;
 use geo::{LineString, Polygon};
 use std::collections::HashMap;
@@ -643,29 +645,87 @@ impl FloorBuilder {
                 }
             }
 
-            // Create a SectorPolygon for each closed ring
-            for ring in all_rings {
-                let mut polygon_linestring_tuples: Vec<(f32, f32)> = ring
+            // Convert rings to LineStrings
+            let mut line_strings: Vec<LineString<f32>> = all_rings
+                .iter()
+                .map(|ring| {
+                    let mut tuples: Vec<(f32, f32)> = ring
+                        .iter()
+                        .flat_map(|line| vec![(line.from.x, line.from.y), (line.to.x, line.to.y)])
+                        .collect();
+                    tuples.dedup();
+                    LineString::from(tuples)
+                })
+                .collect();
+
+            // If we have multiple rings for the same sector, check if any ring contains another.
+            // If so, the outer ring should have the inner ring as a hole (not a separate polygon).
+            // This handles ring-shaped sectors (like walkways around pools).
+            if line_strings.len() > 1 {
+                // Find the largest ring by area (this will be the exterior)
+                let polygons: Vec<Polygon<f32>> = line_strings
                     .iter()
-                    .flat_map(|line| vec![(line.from.x, line.from.y), (line.to.x, line.to.y)])
+                    .map(|ls| Polygon::new(ls.clone(), vec![]))
                     .collect();
 
-                polygon_linestring_tuples.dedup();
+                let areas: Vec<f32> = polygons.iter().map(|p| p.unsigned_area() as f32).collect();
 
-                let line_string = LineString::from(polygon_linestring_tuples);
+                let (exterior_idx, _) = areas
+                    .iter()
+                    .enumerate()
+                    .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+                    .unwrap();
 
-                // Ordering matters, and we need to build sectors in order, and not rely on
-                // convex/concave hull. Specifically, `polygon.convex_hull()` &
-                // `polygon.concave_hull()` seem to draw incorrect polygon bounds,
-                // and ignore actual concavity of C-shaped sectors, for example.
-                let polygon = Polygon::new(line_string, vec![]);
+                let exterior = line_strings[exterior_idx].clone();
 
-                let sector_polygon = SectorPolygon {
+                // Check which other rings are INSIDE the exterior (these become holes)
+                let mut interior_holes: Vec<LineString<f32>> = Vec::new();
+                let mut standalone_rings: Vec<LineString<f32>> = Vec::new();
+
+                let exterior_polygon = Polygon::new(exterior.clone(), vec![]);
+
+                for (i, ls) in line_strings.iter().enumerate() {
+                    if i == exterior_idx {
+                        continue;
+                    }
+
+                    let inner_poly = Polygon::new(ls.clone(), vec![]);
+                    let inner_centroid = inner_poly.centroid();
+
+                    if let Some(centroid) = inner_centroid {
+                        if exterior_polygon.contains(&centroid) {
+                            // This ring is inside the exterior - it's a hole
+                            interior_holes.push(ls.clone());
+                        } else {
+                            // This ring is outside/separate - standalone polygon
+                            standalone_rings.push(ls.clone());
+                        }
+                    } else {
+                        standalone_rings.push(ls.clone());
+                    }
+                }
+
+                // Create the main polygon with holes
+                let main_polygon = Polygon::new(exterior, interior_holes);
+                result.push(SectorPolygon {
+                    sector_id: *sector_id,
+                    polygon: main_polygon,
+                });
+
+                // Create separate polygons for standalone rings
+                for ls in standalone_rings {
+                    result.push(SectorPolygon {
+                        sector_id: *sector_id,
+                        polygon: Polygon::new(ls, vec![]),
+                    });
+                }
+            } else if line_strings.len() == 1 {
+                // Single ring - simple case
+                let polygon = Polygon::new(line_strings.remove(0), vec![]);
+                result.push(SectorPolygon {
                     sector_id: *sector_id,
                     polygon,
-                };
-
-                result.push(sector_polygon);
+                });
             }
         }
         result
@@ -688,24 +748,48 @@ impl FloorBuilder {
             direct_parent.insert(i_index, None);
         }
 
+        // Pre-compute areas for all polygons (use absolute value since winding can vary)
+        let areas: Vec<f32> = all_sector_polygons
+            .iter()
+            .map(|sp| sp.polygon.unsigned_area() as f32)
+            .collect();
+
         for (i_index, x) in all_sector_polygons.iter().enumerate() {
             for (j_index, y) in all_sector_polygons.iter().enumerate() {
                 if i_index == j_index {
                     continue;
                 }
 
-                // If x contains y, x might be y's direct parent
-                if x.polygon.contains(&y.polygon) {
-                    let dominated_by_current_parent = if let Some(current_parent_idx) = direct_parent[&j_index] {
-                        let current_parent = &all_sector_polygons[current_parent_idx];
-                        // If x is contained within the current parent, x is smaller/more direct
-                        current_parent.polygon.contains(&x.polygon)
+                // Skip if same sector_id (multiple rings of same sector shouldn't parent each other)
+                if x.sector_id == y.sector_id {
+                    continue;
+                }
+
+                // Parent must be LARGER than child (by area).
+                // This prevents ring-shaped polygons (like walkways around pools)
+                // from incorrectly being considered children of the inner polygon.
+                if areas[i_index] <= areas[j_index] {
+                    continue;
+                }
+
+                // Use centroid-based containment check - more robust for adjacent polygons
+                // that share boundary edges. We check if x contains the centroid of y.
+                let y_centroid = match y.polygon.centroid() {
+                    Some(c) => c,
+                    None => continue, // Skip degenerate polygons
+                };
+
+                if x.polygon.contains(&y_centroid) {
+                    // Check if x is a more direct (smaller) parent than the current one
+                    let is_better_parent = if let Some(current_parent_idx) = direct_parent[&j_index] {
+                        // x is a better (more direct) parent if it's smaller than the current parent
+                        areas[i_index] < areas[current_parent_idx]
                     } else {
                         // No parent yet
                         true
                     };
 
-                    if dominated_by_current_parent {
+                    if is_better_parent {
                         direct_parent.insert(j_index, Some(i_index));
                     }
                 }
@@ -758,13 +842,26 @@ impl FloorBuilder {
             let p_points = parent_polygon.polygon.exterior().clone().into_points();
             let p_points_len = p_points.len();
 
-            // Exclude last point, since poly2tri library panics on duplicated points in a
-            // polygon
+            // Exclude last point, since earcutr panics on duplicated points in a polygon
             for point in p_points.iter().take(p_points_len - 1) {
                 parent_polygon_data.push(vec![point.x(), point.y()]);
             }
 
             polygon_with_holes_data.push(parent_polygon_data.clone());
+
+            // Add interior holes from the geo::Polygon itself (created during ring extraction
+            // for ring-shaped sectors like walkways around pools)
+            for interior in parent_polygon.polygon.interiors() {
+                let mut hole_data: Vec<Vec<f32>> = vec![];
+                let interior_points = interior.clone().into_points();
+                let interior_len = interior_points.len();
+                for point in interior_points.iter().take(interior_len - 1) {
+                    hole_data.push(vec![point.x(), point.y()]);
+                }
+                if !hole_data.is_empty() {
+                    polygon_with_holes_data.push(hole_data);
+                }
+            }
 
             for child_polygon_index in children_polygon_indices {
                 let child_polygon = &all_sector_polygons[*child_polygon_index];
@@ -791,8 +888,6 @@ impl FloorBuilder {
                 polygon_with_holes_data.push(child_polygon_for_hole_and_own_triangles.clone());
                 child_polygon_without_holes_data.push(child_polygon_for_hole_and_own_triangles.clone());
 
-                println!("Attempting to triangulate child sector {}", child_polygon.sector_id);
-
                 let (child_vertices, child_holes, child_dimensions) =
                     earcutr::flatten(&child_polygon_without_holes_data);
                 let child_triangles_indices: Vec<u32> = earcutr::earcut(&child_vertices, &child_holes, child_dimensions)
@@ -810,7 +905,6 @@ impl FloorBuilder {
                 );
             }
 
-            println!("Attempting to triangulate parent sector {}", parent_polygon.sector_id);
             let (parent_vertices, parent_holes, parent_dimensions) = earcutr::flatten(&polygon_with_holes_data);
             let parent_triangles_indices: Vec<u32> = earcutr::earcut(&parent_vertices, &parent_holes, parent_dimensions)
                 .unwrap()
